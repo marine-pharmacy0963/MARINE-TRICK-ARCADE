@@ -981,4 +981,76 @@ function memoryComplete(){
 Object.assign(window,{memoryMode,startMemoryVersus,memoryVersusMenu,memoryCpuLevelMenu,startMemoryHumanVsHuman,startMemoryCPU,cpuMemoryTurn,flip,updateMemoryStatus,memoryComplete});
 
 
+/* ARCADE V11 roulette public image persistence + desktop click reliability */
+(function(){
+  const st=document.createElement('style');
+  st.id='arcade-v11-desktop-click-fix';
+  st.textContent=`
+    button,.btn,.gameTile{position:relative;z-index:3}
+    button>*,.btn>*{pointer-events:none}
+    @media (pointer:fine){
+      .btn:active,button.btn:active{transform:none!important;box-shadow:0 2px 0 #16819a!important}
+      .btn.alt:active{box-shadow:0 2px 0 #173349!important}
+      .btn.gold:active{box-shadow:0 2px 0 #b67620!important}
+      .btn.pink:active{box-shadow:0 2px 0 #a92b61!important}
+      .gameTile:hover{transform:none!important;filter:brightness(1.04)}
+      .actionBar,.tabs{position:relative;z-index:4}
+    }
+  `;
+  document.head.appendChild(st);
+})();
+function syncRoulettePublicImages(payload){
+  if(!payload)return payload;
+  if(!Array.isArray(payload.roulette))payload.roulette=[];
+  if(Array.isArray(admin.roulette)){
+    payload.roulette=admin.roulette.map((r,i)=>({
+      label:r?.label??String(i),
+      image:r?.image||'',
+      color:r?.color||((i%2)?'AQUA':'PINK'),
+      group:i===0?'ZERO':i<=3?'G1':i<=6?'G2':'G3'
+    }));
+  }
+  return payload;
+}
+const publicDataV11Base=publicData;
+publicData=function(){return syncRoulettePublicImages(publicDataV11Base())};
+async function optimizePublicDataImages(data,settings){
+  let d=copyData(data),cache=new Map();
+  let cfg=Object.assign({quality:.68,backgroundMax:1280,dealerMax:640,characterMax:640,iconMax:512,rouletteMax:512,cardMax:640,comicMax:960},settings||{});
+  async function opt(src,max,q){
+    if(!src||typeof src!=='string'||!src.startsWith('data:image/'))return src;
+    let key=max+'|'+q+'|'+src;if(cache.has(key))return cache.get(key);
+    let v=await reencodeDataUrl(src,max,q);cache.set(key,v);return v;
+  }
+  d.background=await opt(d.background,cfg.backgroundMax,cfg.quality);
+  if(d.dealer){d.dealer.common=await opt(d.dealer.common,cfg.dealerMax,cfg.quality);if(d.dealer.games)for(let k of Object.keys(d.dealer.games)){let g=d.dealer.games[k];if(!g)continue;for(let f of ['default','deal','cheer','sad','watch'])if(g[f])g[f]=await opt(g[f],cfg.dealerMax,cfg.quality)}}
+  if(Array.isArray(d.characters))for(let c of d.characters)c.image=await opt(c.image,cfg.characterMax,cfg.quality);
+  if(Array.isArray(d.games))for(let g of d.games)g.iconImage=await opt(g.iconImage,cfg.iconMax,cfg.quality);
+  if(Array.isArray(d.roulette))for(let i=0;i<d.roulette.length;i++){let src=admin.roulette?.[i]?.image||d.roulette[i].image||'';d.roulette[i].image=await opt(src,cfg.rouletteMax,Math.min(.9,cfg.quality+.04));}
+  if(d.cards){d.cards.backImage=await opt(d.cards.backImage,cfg.cardMax,Math.min(.9,cfg.quality+.02));d.cards.frontImage=await opt(d.cards.frontImage,cfg.cardMax,Math.min(.9,cfg.quality+.02));if(Array.isArray(d.cards.rankImages))for(let i=0;i<d.cards.rankImages.length;i++)d.cards.rankImages[i]=await opt(d.cards.rankImages[i],cfg.cardMax,Math.min(.9,cfg.quality+.02));d.cards.jokerImage=await opt(d.cards.jokerImage,cfg.cardMax,Math.min(.9,cfg.quality+.02))}
+  if(Array.isArray(d.raceComics))for(let i=0;i<d.raceComics.length;i++)d.raceComics[i]=await opt(d.raceComics[i],cfg.comicMax,Math.min(.92,cfg.quality+.04));
+  if(d.shellImage)d.shellImage=await opt(d.shellImage,cfg.iconMax,cfg.quality);
+  if(Array.isArray(d.slotSymbols))for(let s of d.slotSymbols)s.image=await opt(s.image,cfg.iconMax,cfg.quality);
+  return d;
+}
+async function exportPublic(){
+  normalizeDealerAdmin(admin);ensureArcadeAssetAdmin(admin);ensureRaceComicAdmin(admin);ensurePublicExportSettings(admin);ensureArcadeV12Assets(admin);admin.updatedAt=new Date().toLocaleString('ja-JP');
+  let btn=(typeof event!=='undefined'&&event&&event.currentTarget)?event.currentTarget:null,old=btn&&btn.textContent;
+  if(btn){btn.disabled=true;btn.textContent='画像圧縮中…'}
+  try{
+    let raw=syncRoulettePublicImages(publicData()),optimized=await optimizePublicDataImages(raw,admin.publicExport);
+    // Final safety pass: never let roulette images disappear during public generation.
+    if(Array.isArray(admin.roulette)&&Array.isArray(optimized.roulette))for(let i=0;i<optimized.roulette.length;i++){
+      if(admin.roulette[i]?.image&&!optimized.roulette[i].image)optimized.roulette[i].image=await reencodeDataUrl(admin.roulette[i].image,admin.publicExport.rouletteMax||512,Math.min(.9,(admin.publicExport.quality||.68)+.04));
+    }
+    let html=buildPublicHTMLWithData(optimized),ok=download('index.html',html,'text/html;charset=utf-8');adminSave(false);if(!ok)return;
+    let checks=verifyPublicSource(html),mb=(new Blob([html])).size/1024/1024,registered=(admin.roulette||[]).filter(x=>x.image).length,exported=(optimized.roulette||[]).filter(x=>x.image).length;
+    if(checks.ok&&exported>=registered)alert(`index.htmlを書き出しました\n公開画像を軽量化：OK\nルーレット画像：${exported}/${registered} 登録分を反映\n管理情報除去：OK\nサイズ：約${mb.toFixed(1)}MB`);
+    else alert(`書き出しましたが検査に注意があります\nルーレット画像：${exported}/${registered}\n${checks.errors.join(' / ')}\nサイズ：約${mb.toFixed(1)}MB`)
+  }catch(e){alert('index.htmlの生成に失敗しました\n'+storageErrorText(e))}
+  finally{if(btn){btn.disabled=false;btn.textContent=old||'🌐 index.html書き出し'}}
+}
+Object.assign(window,{publicData,optimizePublicDataImages,exportPublic,syncRoulettePublicImages});
+
+
 syncConfig();</script></body></html>
