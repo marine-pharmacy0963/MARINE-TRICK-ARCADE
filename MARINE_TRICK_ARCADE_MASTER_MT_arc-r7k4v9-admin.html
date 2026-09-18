@@ -611,4 +611,175 @@ async function exportPublic(){
 Object.assign(window,{drawCenterWatermark,optimizePublicDataImages,ensurePublicExportSettings,exportPublic});
 
 
+/* ARCADE V12 desktop controls / 54-card memory / shell assets / slot assets */
+(function(){
+  const st=document.createElement('style');
+  st.id='arcade-v12-ui-fixes';
+  st.textContent=`
+    button,.btn,.gameTile,.memoryCard,.raceOddsEntry,.raceCharPick,.raceSlot,.pokerCard{pointer-events:auto!important;touch-action:manipulation;cursor:pointer;position:relative}
+    button:disabled,.btn:disabled{pointer-events:none!important;cursor:default}
+    .shellIconImg{width:28px;height:28px;object-fit:contain;vertical-align:middle;margin-right:4px}
+    .shellInlineImg{width:1.35em;height:1.35em;object-fit:contain;vertical-align:-.3em;margin-right:.12em}
+    .slotSymbolImg{width:min(76px,78%);height:min(76px,78%);object-fit:contain;display:block;margin:auto}
+    .slotPaySymbol{display:inline-flex;align-items:center;gap:5px}.slotPaySymbol img{width:26px;height:26px;object-fit:contain}
+    .memoryRules{margin:8px 0 12px;padding:10px 12px;border-radius:14px;background:#ffffffd9;color:#073653;font-weight:850;line-height:1.5}
+    .memoryGrid.fullDeck{grid-template-columns:repeat(9,minmax(0,1fr));gap:5px}
+    .memoryGrid.fullDeck .memoryCard{width:100%;min-width:0;aspect-ratio:5/7;height:auto!important;min-height:0!important;overflow:hidden}
+    .memoryGrid.fullDeck .memoryFaceCard{width:100%!important;height:100%!important;inset:0!important}
+    .memoryGrid.fullDeck .memoryFaceCard img{width:90%!important;height:90%!important;object-fit:contain!important;object-position:center!important}
+    .memoryGrid.fullDeck .memorySuitBackdrop{font-size:clamp(34px,5.4vw,66px)!important;line-height:1!important}
+    .cards{max-width:100%;flex-wrap:wrap;gap:8px;overflow:visible}
+    .cards .playing,.playerHand .playing{margin-left:0!important;flex:0 0 auto}
+    .playing{max-width:100%}
+    .gameTable{max-width:100%;overflow:hidden}
+    @media(min-width:681px){
+      .actionBar{position:relative!important;bottom:auto!important;z-index:2!important}
+      .tabs{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));width:100%;align-items:stretch}
+      .tabs .btn,.actionBar .btn{min-height:48px}
+      .playerHand .playing{width:92px!important;height:128px!important;font-size:30px!important}
+      .cards .playing{width:84px;height:118px}
+      .pokerHand{max-width:100%;flex-wrap:wrap!important}
+      .pokerHand .playing{width:78px;height:110px;margin:0!important}
+    }
+    @media(max-width:680px){
+      .memoryGrid.fullDeck{grid-template-columns:repeat(6,minmax(0,1fr));gap:3px}
+      .memoryGrid.fullDeck .memoryCard{border-width:2px;border-radius:7px}
+      .memoryGrid.fullDeck .memoryFaceCard>b{font-size:clamp(8px,2.6vw,12px)!important}
+      .memoryGrid.fullDeck .memorySuitBackdrop{font-size:clamp(28px,9vw,48px)!important}
+    }
+  `;
+  document.head.appendChild(st);
+})();
+function ensureArcadeV12Assets(a=admin){
+  a.shellImage=a.shellImage||'';
+  if(!Array.isArray(a.slotSymbols)||a.slotSymbols.length!==5){
+    a.slotSymbols=[
+      {label:'💎',image:'',mult:10},{label:'⭐',image:'',mult:6},{label:'🐚',image:'',mult:4},{label:'🐬',image:'',mult:4},{label:'🍬',image:'',mult:4}
+    ];
+  }
+  a.slotSymbols=a.slotSymbols.map((x,i)=>Object.assign({label:['💎','⭐','🐚','🐬','🍬'][i]||'?',image:'',mult:[10,6,4,4,4][i]||4},x||{}));
+  return a;
+}
+function ensureConfigV12(){
+  config.shellImage=config.shellImage||'';
+  if(!Array.isArray(config.slotSymbols)||config.slotSymbols.length!==5){
+    config.slotSymbols=[{label:'💎',image:'',mult:10},{label:'⭐',image:'',mult:6},{label:'🐚',image:'',mult:4},{label:'🐬',image:'',mult:4},{label:'🍬',image:'',mult:4}];
+  }
+}
+function shellIconHTML(cls='shellInlineImg'){
+  ensureConfigV12();
+  return config.shellImage?`<img class="${cls}" src="${config.shellImage}" alt="シェル">`:'🐚';
+}
+function shellText(n){return `${shellIconHTML()}${n}`}
+function renderWallet(){
+  ensureConfigV12();normalizePlayers();
+  let wallet=$('#wallet');if(wallet){wallet.textContent=state.wallet;let parent=wallet.parentElement;if(parent){let old=parent.querySelector('.shellIconImg');if(old)old.remove();let textNodes=[...parent.childNodes].filter(n=>n.nodeType===3);textNodes.forEach(n=>{if(n.textContent.includes('🐚'))n.textContent=n.textContent.replace('🐚','')});if(config.shellImage){let img=document.createElement('img');img.className='shellIconImg';img.src=config.shellImage;img.alt='シェル';parent.insertBefore(img,wallet)}else if(!parent.textContent.includes('🐚'))parent.insertBefore(document.createTextNode('🐚 '),wallet)}}
+  let pc=$('#pcount');if(pc)pc.value=state.players.length;renderPlayers();
+  let reset=document.querySelector('button[onclick="resetWallet()"]');if(reset)reset.textContent='シェルを初期化';
+}
+function modeUI(fn,extra=''){
+  return `<div class="notice"><b>プレイモード</b><div class="tabs"><button class="btn" onclick="${fn}('free')">🎮 フリー</button><button class="btn gold" onclick="${fn}('medal')">${shellIconHTML()} シェル</button>${extra}</div><div class="muted">シェルはゲーム内ポイントです。現金購入・換金・景品交換はありません。</div></div>`
+}
+function betBox(){return `<label>使用シェル <input id="bet" type="number" min="1" max="20" value="5"></label>`}
+function getSlotSymbols(){ensureConfigV12();return config.slotSymbols}
+function slotSymbolHTML(sym,cls='slotSymbolImg'){return sym.image?`<img class="${cls}" src="${sym.image}" alt="${esc(sym.label||'絵柄')}">`:`<span>${esc(sym.label||'?')}</span>`}
+function slot(mode){
+  ensureConfigV12();let syms=getSlotSymbols();
+  shell('🎰 SHELL SLOT',`<div class="gameTable"><div class="gameStatus">残り <span id="slotRemain">${shellText(state.wallet)}</span></div><div class="payTable">${syms.map((s,i)=>`<span class="slotPaySymbol">${slotSymbolHTML(s,'')} ×3＝${s.mult}倍</span>`).join('')}<span>同柄×2＝2倍</span></div><div class="slotMachine">${[0,1,2].map(i=>`<div class="reel" id="reel${i}">${slotSymbolHTML(syms[2])}</div>`).join('')}</div><div class="stopGrid">${[0,1,2].map(i=>`<button id="stop${i}" class="btn pink" disabled onclick="stopReel(${i})">STOP ${i+1}</button>`).join('')}</div>${mode==='medal'?`<label>かけるシェル <input id="slotBet" type="number" min="1" max="20" value="5"></label>`:''}<div class="actionBar"><button id="spin" class="btn gold" onclick="startSlot('${mode}')">SPIN</button></div></div>`,mode==='medal'?'かけるシェル数を決めて、好きな瞬間に止めよう！':'3列を自分のタイミングで止めてね！')
+}
+function startSlot(mode){
+  if(slotState?.running)return;let syms=getSlotSymbols(),bet=mode==='medal'?Math.max(1,Math.min(20,+$('#slotBet')?.value||1)):0;
+  if(!spend(mode,bet)){dealerSay('シェルが足りないみたい。','sad');return}
+  let remain=$('#slotRemain');if(remain)remain.innerHTML=shellText(state.wallet);
+  slotState={mode,bet,running:true,stopped:[false,false,false],values:[0,0,0],ticks:[0,2,4]};
+  let spin=$('#spin');if(spin)spin.disabled=true;
+  for(let i=0;i<3;i++){let reel=$('#reel'+i),stop=$('#stop'+i);if(reel)reel.classList.add('spinning');if(stop)stop.disabled=false}
+  dealerSay('高速回転スタート！好きな瞬間にSTOP！','watch');
+  slotState.timer=setInterval(()=>{for(let i=0;i<3;i++)if(!slotState.stopped[i]){slotState.ticks[i]=(slotState.ticks[i]+1)%syms.length;slotState.values[i]=slotState.ticks[i];let reel=$('#reel'+i);if(reel)reel.innerHTML=slotSymbolHTML(syms[slotState.values[i]])}},70)
+}
+function finishSlot(){
+  if(!slotState)return;clearInterval(slotState.timer);slotState.running=false;let syms=getSlotSymbols(),ids=slotState.values,mult=0;
+  if(ids[0]===ids[1]&&ids[1]===ids[2])mult=syms[ids[0]].mult;else if(ids[0]===ids[1]||ids[1]===ids[2]||ids[0]===ids[2])mult=2;
+  if(slotState.mode==='medal'&&mult){state.wallet+=slotState.bet*mult;saveState()}
+  let remain=$('#slotRemain');if(remain)remain.innerHTML=shellText(state.wallet);let spin=$('#spin');if(spin)spin.disabled=false;
+  let text=mult?`${mult}倍！${slotState.mode==='medal'?` ${shellIconHTML()}${slotState.bet*mult}獲得`:''}`:'はずれ！';pop(mult?'🎉 WIN!':'RESULT',text,mult?'win':'',mult>=10?'legendary':mult>=4?'rare':'normal');dealerSay(mult?'そろった！ナイスストップ！':'惜しい！もう一度狙ってみよう。',mult?'cheer':'sad')
+}
+function makeMemoryDeck54(){
+  let suits=['♠','♥','♦','♣'],arr=[];
+  for(let s of suits)for(let r=1;r<=13;r++)arr.push({rank:r,suit:s,joker:false,key:'R'+r});
+  arr.push({rank:0,suit:'★',joker:true,key:'JOKER',jokerNo:1},{rank:0,suit:'★',joker:true,key:'JOKER',jokerNo:2});
+  return shuffle(arr)
+}
+function memoryCardData(cardObj){
+  ensureCardConfig();let c=cardObj||{};
+  if(c.joker)return{joker:true,rank:'JOKER',suit:'★',image:config.cards.jokerImage||'',fallback:'🃏',key:'JOKER'};
+  let rank=Math.max(1,Math.min(13,+c.rank||1)),suit=c.suit||'♠';return{joker:false,rank:rankText(rank),suit,image:config.cards.rankImages[rank-1]||config.cards.frontImage||'',fallback:rankText(rank),key:'R'+rank}
+}
+function memoryFace(cardObj){let d=memoryCardData(cardObj),red=d.suit==='♥'||d.suit==='♦';return `<span class="memoryFaceCard ${red?'red':''} ${d.joker?'joker':''}"><span class="memorySuitBackdrop">${d.suit}</span><b>${d.rank}<small>${d.suit}</small></b>${d.image?`<img src="${d.image}" alt="${esc(d.rank)}">`:`<i>${d.fallback}</i>`}</span>`}
+function memoryMode(type){if(type==='solo'){memGame={type:'solo',miss:0}}else{memGame={type:'versus',turn:0,scores:[0,0]}};startMemory54(type)}
+function startMemorySolo(){memGame={type:'solo',miss:0};startMemory54('solo')}
+function startMemoryVersus(){memGame={type:'versus',turn:0,scores:[0,0]};startMemory54('versus')}
+function startMemory54(type){
+  let arr=makeMemoryDeck54();memGame=Object.assign(memGame||{},{type,arr,open:[],done:[],miss:0,ended:false,locked:false});if(type==='versus'){memGame.turn=memGame.turn||0;memGame.scores=memGame.scores||[0,0]}
+  let rule=`<div class="memoryRules"><b>ルール：</b>トランプ54枚を全部使用。<br>♠♥♦♣の<strong>スートが違っても、数字・A/J/Q/Kが同じならペア</strong>です。JOKERはJOKER同士でペアになります。</div>`;
+  shell('🧠 神経衰弱',`<div class="gameTable memoryTable"><div class="gameStatus" id="memStatus"></div>${rule}<div class="memoryGrid fullDeck">${arr.map((x,i)=>`<button class="memoryCard" id="m${i}" onclick="flip(${i})">?</button>`).join('')}</div></div>`,type==='solo'?'54枚すべてから同じ数字を探そう！':'同じ数字を見つけたら続けてめくれるよ！');updateMemoryStatus()
+}
+function updateMemoryStatus(){let m=memGame,e=$('#memStatus');if(!e||!m)return;e.textContent=m.type==='solo'?`54枚・ペア ${m.done.length/2}/27　ミス ${m.miss}`:`54枚・プレイヤー${m.turn+1}の番　${m.scores[0]} - ${m.scores[1]}`}
+function flip(i){
+  let m=memGame;if(!m||m.ended||m.locked||m.done.includes(i)||m.open.includes(i)||m.open.length>=2)return;let e=$('#m'+i);if(!e)return;e.innerHTML=memoryFace(m.arr[i]);e.classList.add('open');m.open.push(i);if(m.open.length<2)return;
+  m.locked=true;let[a,b]=m.open,da=memoryCardData(m.arr[a]),db=memoryCardData(m.arr[b]),hit=da.key===db.key;
+  if(hit){m.done.push(a,b);m.open=[];$('#m'+a)?.classList.add('done');$('#m'+b)?.classList.add('done');if(m.type==='versus')m.scores[m.turn]++;m.locked=false;updateMemoryStatus();if(m.done.length===54)memoryComplete();return}
+  setTimeout(()=>{[a,b].forEach(n=>{let x=$('#m'+n);if(x){x.textContent='?';x.classList.remove('open')}});m.open=[];if(m.type==='solo')m.miss++;else m.turn=1-m.turn;m.locked=false;updateMemoryStatus()},650)
+}
+function memoryComplete(){
+  let m=memGame;if(!m||m.ended)return;m.ended=true;
+  if(m.type==='solo'){let reward=Math.max(5,30-Math.floor(m.miss/3));state.wallet+=reward;saveState();pop('COMPLETE！',`54枚クリア！<br>ミス ${m.miss}回<br>${shellIconHTML()}${reward}獲得`,'win','rare')}
+  else{let winner=m.scores[0]===m.scores[1]?-1:m.scores[0]>m.scores[1]?0:1;if(winner>=0){state.wallet+=10;saveState()}pop(winner<0?'DRAW':`プレイヤー${winner+1} WIN！`,winner<0?'引き分け':`${shellIconHTML()}10獲得！`,winner>=0?'win':'')}
+}
+function blackjack(mode){bjRun={mode,pot:0,base:5,lastBet:5,active:false};bjReady()}
+function bjReady(){let r=bjRun;shell('♠️ BLACKJACK',`<div class="gameTable centeredGame"><div class="gameStatus">残り ${shellText(state.wallet)}</div>${r.mode==='medal'?`<label>最初にかけるシェル <input id="bjBet" type="number" min="1" max="20" value="${Math.min(20,r.lastBet||5)}"></label>`:'<p>フリープレイ</p>'}<div class="actionBar"><button class="btn gold bigContinue" onclick="bjStart()">ゲーム開始</button><button class="btn alt" onclick="back()">ゲームをやめる</button></div></div>`,'21を目指して勝負しよう！')}
+function bjEnd(result){
+  if(bj.ended)return;bj.ended=true;let win=result==='WIN',tie=result==='DRAW';if(win)bjRun.pot*=2;if(!win&&!tie){bjRun.pot=0;bjRun.active=false}
+  let lossActions=`<button class="btn gold" onclick="bjReady()">ゲームを続ける</button><button class="btn alt" onclick="back()">ゲームをやめる</button>`;
+  let winActions=`<button class="btn" onclick="bjDecision(true)">勝ち分で続ける</button><button class="btn gold" onclick="bjDecision(false)">シェルを受け取る</button>`;
+  shell('♠️ BLACKJACK',`<div class="gameTable"><p>ファマリン ${val(bj.c)}</p><div class="cards">${bj.c.map(c=>card(c)).join('')}</div><p>あなた ${val(bj.p)}</p><div class="cards playerHand">${bj.p.map(c=>card(c)).join('')}</div><div class="actionBar">${win||tie?winActions:lossActions}</div></div>`,'勝負が決まったよ！');
+  let level=win&&bjRun.pot>=bjRun.lastBet*4?'rare':'normal',el=document.createElement('div');el.className='popup';el.innerHTML=`<div class="popupBox ${win?'winPopup '+level:''}"><h2>${result==='BUST'?'BUST！':win?'YOU WIN！':tie?'DRAW':'DEALER WIN'}</h2><p>あなた ${val(bj.p)} / ファマリン ${val(bj.c)}</p>${win||tie?`<p class="bigReward">現在 ${shellText(bjRun.pot)}</p><button class="btn bigContinue" onclick="bjDecision(true);this.parentElement.parentElement.remove()">勝ち分で続ける</button><button class="btn gold bigContinue" onclick="bjDecision(false);this.parentElement.parentElement.remove()">シェルを受け取る</button>`:`<button class="btn gold bigContinue" onclick="this.parentElement.parentElement.remove();bjReady()">ゲームを続ける</button><button class="btn alt bigContinue" onclick="this.parentElement.parentElement.remove();back()">ゲームをやめる</button>`}</div>`;document.body.appendChild(el);if(win)celebrateLevel(level)
+}
+async function setShellImage(file){if(!file)return;ensureArcadeV12Assets(admin);admin.shellImage=await compressImage(file);maybeAdminSave();openAdminRefresh()}
+async function setSlotSymbolImage(i,file){if(!file)return;ensureArcadeV12Assets(admin);admin.slotSymbols[i].image=await compressImage(file);maybeAdminSave();openAdminRefresh()}
+function arcadeV12AssetAdminHTML(){ensureArcadeV12Assets(admin);return `<section class="panel"><h3>シェル・スロット絵柄</h3><div data-image-dropzone><h4>シェル画像</h4><p>ゲーム内ポイント「シェル」の表示に使います。</p>${admin.shellImage?`<img class="thumb" src="${admin.shellImage}">`:''}<input type="file" accept="image/*" onchange="setShellImage(this.files[0])"> ${admin.shellImage?`<button class="btn alt" onclick="admin.shellImage='';maybeAdminSave();openAdminRefresh()">画像を削除</button>`:''}</div><h4>スロット絵柄 5種類</h4><div class="rankImageGrid">${admin.slotSymbols.map((s,i)=>`<div class="rankImageItem" data-image-dropzone><div class="rankImagePreview">${s.image?`<img src="${s.image}">`:esc(s.label)}</div><div><label>表示名<input value="${esc(s.label)}" onchange="admin.slotSymbols[${i}].label=this.value;maybeAdminSave()"></label><label>3つ揃い倍率<input type="number" min="2" max="50" value="${s.mult}" onchange="admin.slotSymbols[${i}].mult=Math.max(2,+this.value||4);maybeAdminSave()"></label><label>画像<input type="file" accept="image/*" onchange="setSlotSymbolImage(${i},this.files[0])"></label>${s.image?`<button class="btn alt" onclick="admin.slotSymbols[${i}].image='';maybeAdminSave();openAdminRefresh()">画像を削除</button>`:''}</div></div>`).join('')}</div></section>`}
+const openAdminV12Base=openAdmin;
+openAdmin=function(){ensureArcadeV12Assets(admin);openAdminV12Base();let host=$('#adminOverlay .adminBox');if(!host)return;let wrap=document.createElement('div');wrap.innerHTML=arcadeV12AssetAdminHTML();host.insertBefore(wrap.firstElementChild,host.lastElementChild);setTimeout(()=>{try{enableAdminImageDropzones()}catch(e){}},0)};
+const publicDataV12Base=publicData;
+publicData=function(){let d=publicDataV12Base();ensureArcadeV12Assets(admin);d.shellImage=admin.shellImage||'';d.slotSymbols=admin.slotSymbols.map(x=>({label:x.label||'',image:x.image||'',mult:+x.mult||4}));return d};
+const optimizePublicDataImagesV12Base=optimizePublicDataImages;
+optimizePublicDataImages=async function(data,settings){let d=await optimizePublicDataImagesV12Base(data,settings);let cfg=Object.assign({quality:.68,iconMax:512},settings||{});d.shellImage=await reencodeDataUrl(d.shellImage,cfg.iconMax,cfg.quality);if(Array.isArray(d.slotSymbols))for(let s of d.slotSymbols)s.image=await reencodeDataUrl(s.image,cfg.iconMax,cfg.quality);return d};
+Object.assign(window,{modeUI,betBox,slot,startSlot,finishSlot,memoryMode,startMemorySolo,startMemoryVersus,startMemory54,flip,memoryFace,memoryCardData,blackjack,bjReady,bjEnd,setShellImage,setSlotSymbolImage,publicData,optimizePublicDataImages});
+ensureConfigV12();renderWallet();
+
+
+/* ARCADE V12b unify visible currency wording and custom shell icon */
+function currencyHTML(v){
+  let s=String(v??'');
+  s=s.replace(/メダル/g,'シェル').replace(/貝殻/g,'シェル');
+  if(config&&config.shellImage)s=s.replace(/🐚/g,shellIconHTML());
+  return s
+}
+function currencyText(v){return String(v??'').replace(/メダル/g,'シェル').replace(/貝殻/g,'シェル').replace(/🐚/g,'シェル')}
+function shell(title,body,message){
+  $('#home').classList.add('hidden');let s=$('#screen');s.classList.remove('hidden');
+  s.innerHTML=`<section class="panel"><div class="row"><button class="btn alt" onclick="back()">← ARCADE</button><h2>${title}</h2></div>${dealerStage(currencyText(message))}${currencyHTML(body)}</section>`
+}
+function pop(title,text,kind='',rarity=''){
+  let level=rarity||inferRarity(title,text),el=document.createElement('div');el.className='popup';
+  el.innerHTML=`<div class="popupBox ${kind==='win'?'winPopup '+level:''}"><h2>${currencyText(title)}</h2><div class="popupBody">${currencyHTML(text)}</div><button class="btn gold" onclick="this.parentElement.parentElement.remove()">OK</button></div>`;
+  document.body.appendChild(el);if(kind==='win')celebrateLevel(level)
+}
+const dealerSayV12Base=dealerSay;
+dealerSay=function(message,mood='',delay=0){return dealerSayV12Base(currencyText(message),mood,delay)};
+const toastV12Base=toast;
+toast=function(message){return toastV12Base(currencyText(message))};
+Object.assign(window,{shell,pop,dealerSay,toast});
+
+
 syncConfig();</script></body></html>
