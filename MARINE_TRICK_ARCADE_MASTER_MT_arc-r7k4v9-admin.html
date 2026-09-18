@@ -508,4 +508,107 @@ async function exportPublic(){
 Object.assign(window,{exportPublic,optimizePublicDataImages,reencodeDataUrl});
 
 
+/* ARCADE V11 suit auto-fit + configurable public export settings */
+(function(){
+  let st=document.createElement('style');
+  st.id='arcade-v11-card-suit-fit';
+  st.textContent=`
+    .cardCenter{width:76%!important;height:72%!important;overflow:visible!important}
+    .cardSuitBackdrop{position:absolute!important;inset:0!important;display:grid!important;place-items:center!important;font-size:clamp(46px,7.2vw,72px)!important;font-weight:900!important;line-height:.82!important;opacity:1!important;transform:translateY(4px) scale(.92)!important;transform-origin:center center!important;pointer-events:none!important}
+    .customCard.joker .cardSuitBackdrop{transform:translateY(4px) scale(.88)!important}
+    .cardRankCharacter{width:88%!important;height:88%!important;object-fit:contain!important}
+  `;
+  document.head.appendChild(st);
+})();
+function ensurePublicExportSettings(a=admin){
+  a.publicExport||(a.publicExport={});
+  if(a.publicExport.quality==null)a.publicExport.quality=.68;
+  if(a.publicExport.backgroundMax==null)a.publicExport.backgroundMax=1280;
+  if(a.publicExport.dealerMax==null)a.publicExport.dealerMax=640;
+  if(a.publicExport.characterMax==null)a.publicExport.characterMax=640;
+  if(a.publicExport.iconMax==null)a.publicExport.iconMax=512;
+  if(a.publicExport.rouletteMax==null)a.publicExport.rouletteMax=512;
+  if(a.publicExport.cardMax==null)a.publicExport.cardMax=640;
+  if(a.publicExport.comicMax==null)a.publicExport.comicMax=960;
+  return a;
+}
+function publicExportAdminHTML(){
+  ensurePublicExportSettings(admin);
+  return `<section class="panel"><h3>公開index 画像圧縮設定</h3><p class="muted">MASTER内の元画像はそのまま保持し、index.html 書き出し時だけ軽量化します。</p><div class="adminGrid"><label>圧縮率（WebP品質）<input type="number" min="0.4" max="0.95" step="0.02" value="${admin.publicExport.quality}" onchange="ensurePublicExportSettings(admin);admin.publicExport.quality=Math.max(.4,Math.min(.95,+this.value||.68));maybeAdminSave()"></label><label>背景 最大辺<input type="number" min="480" max="2048" step="32" value="${admin.publicExport.backgroundMax}" onchange="ensurePublicExportSettings(admin);admin.publicExport.backgroundMax=Math.max(480,+this.value||1280);maybeAdminSave()"></label><label>ディーラー 最大辺<input type="number" min="256" max="1600" step="32" value="${admin.publicExport.dealerMax}" onchange="ensurePublicExportSettings(admin);admin.publicExport.dealerMax=Math.max(256,+this.value||640);maybeAdminSave()"></label><label>キャラ・トランプ 最大辺<input type="number" min="256" max="1600" step="32" value="${admin.publicExport.characterMax}" onchange="ensurePublicExportSettings(admin);admin.publicExport.characterMax=Math.max(256,+this.value||640);admin.publicExport.cardMax=admin.publicExport.characterMax;maybeAdminSave()"></label><label>ゲームアイコン 最大辺<input type="number" min="128" max="1024" step="32" value="${admin.publicExport.iconMax}" onchange="ensurePublicExportSettings(admin);admin.publicExport.iconMax=Math.max(128,+this.value||512);maybeAdminSave()"></label><label>ルーレット 最大辺<input type="number" min="128" max="1024" step="32" value="${admin.publicExport.rouletteMax}" onchange="ensurePublicExportSettings(admin);admin.publicExport.rouletteMax=Math.max(128,+this.value||512);maybeAdminSave()"></label><label>レース漫画 最大辺<input type="number" min="320" max="2048" step="32" value="${admin.publicExport.comicMax}" onchange="ensurePublicExportSettings(admin);admin.publicExport.comicMax=Math.max(320,+this.value||960);maybeAdminSave()"></label></div><p class="notice">おすすめ初期値：圧縮率 0.68 / 背景 1280 / キャラ・トランプ 640 / 漫画 960</p></section>`
+}
+const openAdminV11=openAdmin;
+openAdmin=function(){
+  ensurePublicExportSettings(admin);
+  openAdminV11();
+  let host=$('#adminOverlay .adminBox');
+  if(!host)return;
+  let section=document.createElement('div');
+  section.innerHTML=publicExportAdminHTML();
+  host.insertBefore(section.firstElementChild,host.lastElementChild);
+};
+function fitTrumpWatermarkFont(ctx,symbol,maxW,maxH,start){
+  let low=80,high=start||620,best=low;
+  while(low<=high){
+    let mid=(low+high)>>1;
+    ctx.font=`900 ${mid}px serif`;
+    let m=ctx.measureText(symbol),mw=m.width||mid,mh=(m.actualBoundingBoxAscent||mid*.76)+(m.actualBoundingBoxDescent||mid*.18);
+    if(mw<=maxW&&mh<=maxH){best=mid;low=mid+1}else high=mid-1;
+  }
+  return best;
+}
+function drawCenterWatermark(ctx,{symbol,color,w,h}){
+  ctx.save();
+  ctx.textAlign='center';
+  ctx.textBaseline='middle';
+  ctx.fillStyle=color;
+  let size=fitTrumpWatermarkFont(ctx,symbol,w*.66,h*.44,620);
+  ctx.font=`900 ${size}px serif`;
+  ctx.fillText(symbol,w/2,h/2+16);
+  ctx.restore();
+}
+async function optimizePublicDataImages(data,settings){
+  let d=copyData(data),cache=new Map();
+  let cfg=Object.assign({quality:.68,backgroundMax:1280,dealerMax:640,characterMax:640,iconMax:512,rouletteMax:512,cardMax:640,comicMax:960},settings||{});
+  async function opt(src,max,q){
+    if(!src||typeof src!=='string'||!src.startsWith('data:image/'))return src;
+    let key=max+'|'+q+'|'+src;
+    if(cache.has(key))return cache.get(key);
+    let v=await reencodeDataUrl(src,max,q);cache.set(key,v);return v;
+  }
+  d.background=await opt(d.background,cfg.backgroundMax,cfg.quality);
+  if(d.dealer){
+    d.dealer.common=await opt(d.dealer.common,cfg.dealerMax,cfg.quality);
+    if(d.dealer.games)for(let k of Object.keys(d.dealer.games)){
+      let g=d.dealer.games[k];if(!g)continue;
+      for(let f of ['default','deal','cheer','sad','watch'])if(g[f])g[f]=await opt(g[f],cfg.dealerMax,cfg.quality);
+    }
+  }
+  if(Array.isArray(d.characters))for(let c of d.characters)c.image=await opt(c.image,cfg.characterMax,cfg.quality);
+  if(Array.isArray(d.games))for(let g of d.games)g.iconImage=await opt(g.iconImage,cfg.iconMax,cfg.quality);
+  if(Array.isArray(d.roulette))for(let r of d.roulette)r.image=await opt(r.image,cfg.rouletteMax,cfg.quality);
+  if(d.cards){
+    d.cards.backImage=await opt(d.cards.backImage,cfg.cardMax,Math.min(.9,cfg.quality+.02));
+    d.cards.frontImage=await opt(d.cards.frontImage,cfg.cardMax,Math.min(.9,cfg.quality+.02));
+    if(Array.isArray(d.cards.rankImages))for(let i=0;i<d.cards.rankImages.length;i++)d.cards.rankImages[i]=await opt(d.cards.rankImages[i],cfg.cardMax,Math.min(.9,cfg.quality+.02));
+    d.cards.jokerImage=await opt(d.cards.jokerImage,cfg.cardMax,Math.min(.9,cfg.quality+.02));
+  }
+  if(Array.isArray(d.raceComics))for(let i=0;i<d.raceComics.length;i++)d.raceComics[i]=await opt(d.raceComics[i],cfg.comicMax,Math.min(.92,cfg.quality+.04));
+  return d;
+}
+async function exportPublic(){
+  normalizeDealerAdmin(admin);ensureArcadeAssetAdmin(admin);ensureRaceComicAdmin(admin);ensurePublicExportSettings(admin);admin.updatedAt=new Date().toLocaleString('ja-JP');
+  let btn=(typeof event!=='undefined'&&event&&event.currentTarget)?event.currentTarget:null,old=btn&&btn.textContent;
+  if(btn){btn.disabled=true;btn.textContent='画像圧縮中…'}
+  try{
+    let raw=publicData(),optimized=await optimizePublicDataImages(raw,admin.publicExport),html=buildPublicHTMLWithData(optimized);
+    let ok=download('index.html',html,'text/html;charset=utf-8');adminSave(false);if(!ok)return;
+    let checks=verifyPublicSource(html),mb=(new Blob([html])).size/1024/1024;
+    if(checks.ok)alert(`index.htmlを書き出しました\n公開画像を軽量化：OK\n管理情報除去：OK\nサイズ：約${mb.toFixed(1)}MB\n圧縮率：${admin.publicExport.quality}`);
+    else alert('書き出しましたが検査に失敗：'+checks.errors.join(' / ')+`\nサイズ：約${mb.toFixed(1)}MB`)
+  }catch(e){alert('index.htmlの生成に失敗しました\n'+storageErrorText(e))}
+  finally{if(btn){btn.disabled=false;btn.textContent=old||'🌐 index.html書き出し'}}
+}
+Object.assign(window,{drawCenterWatermark,optimizePublicDataImages,ensurePublicExportSettings,exportPublic});
+
+
 syncConfig();</script></body></html>
