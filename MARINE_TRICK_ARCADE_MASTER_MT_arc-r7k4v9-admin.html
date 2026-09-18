@@ -782,4 +782,203 @@ toast=function(message){return toastV12Base(currencyText(message))};
 Object.assign(window,{shell,pop,dealerSay,toast});
 
 
+/* ARCADE V13 race-local-play integration */
+(function(){
+  const st=document.createElement('style');
+  st.id='arcade-v13-local-race';
+  st.textContent=`
+    .raceLocalModeTabs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin:10px 0 14px}
+    .raceLocalPlayers{display:grid;gap:10px;margin:12px 0}
+    .raceLocalPlayer{padding:10px;border:3px solid #a9dce8;border-radius:16px;background:#fff;color:#0b4d70}
+    .raceLocalPlayer>strong{display:block;margin-bottom:7px;font-size:16px}
+    .raceLocalCharGrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(78px,1fr));gap:6px}
+    .raceLocalChar{min-width:0;border:2px solid #8fd3e4;border-radius:12px;background:#eefbff;color:#0b4d70;padding:6px;cursor:pointer;font-weight:900}
+    .raceLocalChar.selected{background:#ffe58c;outline:3px solid #ff9bc5}
+    .raceLocalChar.used:not(.selected){opacity:.35;filter:grayscale(.5);cursor:not-allowed}
+    .raceLocalChar img{max-width:52px;max-height:52px;object-fit:contain}
+    .raceLocalSummary{margin:10px 0;padding:10px;border-radius:14px;background:#fff;color:#0b4d70}
+    @media(max-width:680px){.raceLocalCharGrid{grid-template-columns:repeat(3,minmax(0,1fr))}.raceLocalModeTabs{grid-template-columns:1fr}}
+  `;
+  document.head.appendChild(st);
+})();
+function cleanupLegacyLocalPlay(){
+  let home=document.querySelector('#home');if(!home)return;
+  [...home.querySelectorAll('.notice')].forEach(n=>{if((n.textContent||'').includes('ローカルプレイ設定'))n.remove()});
+}
+function raceLocalDefaults(m){
+  if(!m)return m;
+  if(m.localMode==null)m.localMode=false;
+  if(!Number.isInteger(m.localCount))m.localCount=2;
+  if(!Array.isArray(m.localPlayers))m.localPlayers=[];
+  while(m.localPlayers.length<m.localCount)m.localPlayers.push(m.localPlayers.length%Math.max(1,config.characters.length));
+  m.localPlayers=m.localPlayers.slice(0,m.localCount);
+  let used=new Set();
+  m.localPlayers=m.localPlayers.map((c,i)=>{
+    if(c>=0&&c<config.characters.length&&!used.has(c)){used.add(c);return c}
+    let next=config.characters.findIndex((_,j)=>!used.has(j));if(next<0)next=i%config.characters.length;used.add(next);return next
+  });
+  if(m.localMode){m.entrants=m.localPlayers.slice();m.drawType='all'}
+  return m;
+}
+const setupRaceV13=setupRace;
+setupRace=function(mode){
+  setupRaceV13(mode);
+  if(mode==='draw'&&raceMarket){raceLocalDefaults(raceMarket);raceRenderEditor()}
+};
+function raceSetLocalMode(on){if(!raceMarket)return;raceMarket.localMode=!!on;raceLocalDefaults(raceMarket);if(!on&&(!raceMarket.entrants||raceMarket.entrants.length<2))raceMarket.entrants=config.characters.map((_,i)=>i);raceRenderEditor()}
+function raceSetLocalCount(n){if(!raceMarket)return;raceMarket.localCount=Math.max(2,Math.min(Math.min(6,config.characters.length),+n||2));raceLocalDefaults(raceMarket);raceRenderEditor()}
+function raceChooseLocalChar(pi,ci){
+  let m=raceMarket;if(!m||!m.localMode)return;
+  if(m.localPlayers.some((x,i)=>i!==pi&&x===ci)){toast('そのキャラは他のプレイヤーが選んでるよ');return}
+  m.localPlayers[pi]=ci;m.entrants=m.localPlayers.slice();raceRenderEditor();
+}
+function raceLocalPlayersHTML(m){
+  raceLocalDefaults(m);let used=new Set(m.localPlayers);
+  return `<label>参加人数 <select onchange="raceSetLocalCount(this.value)">${Array.from({length:Math.max(1,Math.min(5,config.characters.length-1))},(_,i)=>i+2).map(n=>`<option value="${n}" ${m.localCount===n?'selected':''}>${n}人</option>`).join('')}</select></label><div class="raceLocalPlayers">${m.localPlayers.map((sel,pi)=>`<div class="raceLocalPlayer"><strong>プレイヤー${pi+1}</strong><div class="raceLocalCharGrid">${config.characters.map((c,ci)=>{let otherUsed=used.has(ci)&&sel!==ci;return `<button class="raceLocalChar ${sel===ci?'selected':''} ${otherUsed?'used':''}" ${otherUsed?'disabled':''} onclick="raceChooseLocalChar(${pi},${ci})">${charVisual(ci,'46px')}<span>${esc(c.name)}</span></button>`}).join('')}</div></div>`).join('')}</div><p class="notice">全員まったく同じ確率で走ります。1着のキャラを選んでいたプレイヤーが勝ちです。</p>`
+}
+const raceRenderEditorV13=raceRenderEditor;
+raceRenderEditor=function(){
+  let m=raceMarket;if(!m)return;
+  if(m.mode!=='draw'){raceRenderEditorV13();return}
+  raceLocalDefaults(m);let stage=$('#raceStage');if(!stage)return;
+  stage.innerHTML=`<div class="raceLocalModeTabs"><button class="btn ${!m.localMode?'gold':'alt'}" onclick="raceSetLocalMode(false)">🎯 抽選として使う</button><button class="btn ${m.localMode?'pink':'alt'}" onclick="raceSetLocalMode(true)">👥 みんなでレース</button></div>${m.localMode?raceLocalPlayersHTML(m):`<h3>出走キャラをタッチして選ぶ</h3><div class="raceEntrants touchEntrants">${config.characters.map((c,i)=>`<button class="raceCharPick ${m.entrants.includes(i)?'selected':''}" onclick="raceToggleEntrant(${i})">${charVisual(i,'44px')}<span>${esc(c.name)}</span></button>`).join('')}</div><label>発表方法<select id="drawType" onchange="raceSetDrawType(this.value)"><option value="all" ${m.drawType==='all'?'selected':''}>全順位</option><option value="one" ${m.drawType==='one'?'selected':''}>当選1人</option><option value="three" ${m.drawType==='three'?'selected':''}>当選3人</option></select></label><p>公平抽選：選んだキャラ全員が同じ確率です。</p>`}<div class="actionBar"><button class="btn gold" onclick="raceConfirmDraw()">${m.localMode?'参加者を決定':'抽選内容を決定'}</button></div>`;
+};
+function raceConfirmDraw(){
+  let m=raceMarket;if(!m)return;raceLocalDefaults(m);
+  if(m.localMode){
+    if(m.localPlayers.length<2){toast('2人以上選んでね');return}
+    if(new Set(m.localPlayers).size!==m.localPlayers.length){toast('同じキャラは選べないよ');return}
+    m.entrants=m.localPlayers.slice();m.drawType='all';m.confirmed=true;
+    $('#raceStage').innerHTML=`<div class="raceConfirm"><h3>ローカルレース準備OK！</h3><div class="raceLocalSummary">${m.localPlayers.map((ci,i)=>`<p><b>プレイヤー${i+1}</b> → ${charVisual(ci,'52px')} ${esc(config.characters[ci].name)}</p>`).join('')}</div><p>全員同確率。1着が勝者です。</p><div class="actionBar"><button class="btn gold bigStart" onclick="runRace('draw')">レース開始！</button><button class="btn alt" onclick="raceEditBets()">戻る</button></div></div>`;
+    return;
+  }
+  if(m.entrants.length<2){toast('2人以上選んでね');return}
+  m.drawType=$('#drawType')?.value||m.drawType;m.confirmed=true;
+  $('#raceStage').innerHTML=`<div class="raceConfirm"><h3>抽選内容を決定しました</h3><p>出走 ${m.entrants.length}人 ／ ${m.drawType==='all'?'全順位':m.drawType==='one'?'当選1人':'当選3人'}</p><div class="raceConfirmChars">${m.entrants.map(i=>charVisual(i,'52px')).join('')}</div><div class="actionBar"><button class="btn gold bigStart" onclick="runRace('draw')">開始する</button><button class="btn alt" onclick="raceEditBets()">戻る</button></div></div>`;
+}
+const finishRaceV13=finishRace;
+finishRace=function(mode,order,t=raceTicket){
+  let m=raceMarket;
+  if(mode==='draw'&&m&&m.localMode){
+    if(!t||t.settled)return;t.settled=true;
+    let winnerChar=order[0],winnerPlayer=m.localPlayers.indexOf(winnerChar);
+    let ranking=order.map((ci,k)=>{let pi=m.localPlayers.indexOf(ci);return `<div class="${k===0?'champion':''}">${k===0?'<span class="winnerCrown">👑</span>':''}${charVisual(ci,k===0?'145px':'92px')}<b>${k+1}位 ${esc(config.characters[ci].name)}</b>${pi>=0?`<span>プレイヤー${pi+1}</span>`:''}</div>`}).join('');
+    pop('🏆 ローカルレース結果',`<h2>${winnerPlayer>=0?`プレイヤー${winnerPlayer+1}の勝ち！`:'1着決定！'}</h2><div class="raceWinners">${ranking}</div>`,'win','rare');return;
+  }
+  return finishRaceV13(mode,order,t)
+};
+setTimeout(cleanupLegacyLocalPlay,0);
+Object.assign(window,{setupRace,raceRenderEditor,raceSetLocalMode,raceSetLocalCount,raceChooseLocalChar,raceConfirmDraw,finishRace});
+
+
+/* ARCADE V14 Memory CPU battle: 5 difficulty levels */
+(function(){
+  let st=document.createElement('style');
+  st.id='arcade-v14-memory-cpu';
+  st.textContent=`
+    .cpuLevelGrid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px;margin:12px 0}
+    .cpuLevelGrid .btn{min-width:0;padding:10px 6px;font-size:13px}
+    .memoryModeGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:12px 0}
+    .cpuThinking{display:inline-block;margin-left:7px;font-size:.85em;opacity:.78}
+    @media(max-width:600px){.cpuLevelGrid{grid-template-columns:repeat(2,minmax(0,1fr))}.cpuLevelGrid .btn:last-child{grid-column:1/-1}.memoryModeGrid{grid-template-columns:1fr}}
+  `;
+  document.head.appendChild(st);
+})();
+const MEMORY_CPU_LEVELS={
+  1:{name:'LV1 やさしい',remember:.28,usePair:.32,secondMatch:.38,maxMemory:6,delay:780},
+  2:{name:'LV2 ひかえめ',remember:.45,usePair:.50,secondMatch:.55,maxMemory:10,delay:720},
+  3:{name:'LV3 ふつう',remember:.65,usePair:.70,secondMatch:.72,maxMemory:18,delay:650},
+  4:{name:'LV4 つよい',remember:.85,usePair:.90,secondMatch:.90,maxMemory:32,delay:590},
+  5:{name:'LV5 エキスパート',remember:1,usePair:1,secondMatch:1,maxMemory:54,delay:520}
+};
+function memoryVersusMenu(){
+  shell('🧠 神経衰弱・対戦',`<div class="gameTable centeredGame"><div class="memoryRules"><b>対戦ルール：</b>54枚すべてを使い、スートが違っても同じ数字・A/J/Q/Kならペア。JOKERはJOKER同士です。ペアを取ったら続けてめくれます。</div><div class="memoryModeGrid"><button class="btn" onclick="startMemoryHumanVsHuman()">👥 2人で対戦</button><button class="btn pink" onclick="memoryCpuLevelMenu()">🤖 CPUと対戦</button></div><div class="actionBar"><button class="btn alt" onclick="openGame('memory')">← 戻る</button></div></div>`,'2人対戦かCPU対戦を選んでね！')
+}
+function memoryCpuLevelMenu(){
+  let buttons=Object.entries(MEMORY_CPU_LEVELS).map(([lv,c])=>`<button class="btn ${+lv>=4?'pink':''}" onclick="startMemoryCPU(${lv})">${c.name}</button>`).join('');
+  shell('🤖 CPU対戦',`<div class="gameTable centeredGame"><div class="memoryRules"><b>CPUの強さ：</b>強いほど、これまで表になったカードをよく覚え、知っているペアを正確に取りにいきます。カードの中身を透視する処理はしません。</div><div class="cpuLevelGrid">${buttons}</div><div class="actionBar"><button class="btn alt" onclick="memoryVersusMenu()">← 戻る</button></div></div>`,'CPUの記憶力を選ぼう！')
+}
+function startMemoryHumanVsHuman(){memGame={type:'versus',turn:0,scores:[0,0],cpu:false};startMemory54('versus')}
+function startMemoryCPU(level){
+  level=Math.max(1,Math.min(5,+level||3));
+  memGame={type:'versus',turn:0,scores:[0,0],cpu:true,cpuLevel:level,cpuMemory:[],cpuThinking:false};
+  startMemory54('versus')
+}
+function memoryMode(type){
+  if(type==='solo'){memGame={type:'solo',miss:0};startMemory54('solo');return}
+  memoryVersusMenu()
+}
+function startMemoryVersus(){memoryVersusMenu()}
+function memoryCpuCfg(){return MEMORY_CPU_LEVELS[memGame?.cpuLevel||3]||MEMORY_CPU_LEVELS[3]}
+function cpuPruneMemory(){
+  let m=memGame;if(!m?.cpu)return;
+  let seen=new Set(),valid=[];
+  for(let i=m.cpuMemory.length-1;i>=0;i--){let idx=m.cpuMemory[i];if(seen.has(idx)||m.done.includes(idx))continue;seen.add(idx);valid.push(idx)}
+  valid.reverse();let max=memoryCpuCfg().maxMemory;if(valid.length>max)valid=valid.slice(valid.length-max);m.cpuMemory=valid
+}
+function cpuObserve(index){
+  let m=memGame;if(!m?.cpu||m.done.includes(index))return;
+  let cfg=memoryCpuCfg();
+  if(Math.random()>cfg.remember)return;
+  m.cpuMemory=m.cpuMemory.filter(x=>x!==index);m.cpuMemory.push(index);cpuPruneMemory()
+}
+function cpuKnownPairs(){
+  let m=memGame;if(!m?.cpu)return[];cpuPruneMemory();let by={};
+  for(let idx of m.cpuMemory){if(m.done.includes(idx))continue;let key=memoryCardData(m.arr[idx]).key;(by[key]||(by[key]=[])).push(idx)}
+  return Object.values(by).filter(a=>a.length>=2)
+}
+function cpuRandomAvailable(exclude=[]){
+  let m=memGame,ex=new Set(exclude),pool=m.arr.map((_,i)=>i).filter(i=>!m.done.includes(i)&&!m.open.includes(i)&&!ex.has(i));
+  return pool.length?pool[Math.floor(Math.random()*pool.length)]:null
+}
+function cpuMatchingKnown(firstIndex){
+  let m=memGame,key=memoryCardData(m.arr[firstIndex]).key;cpuPruneMemory();let pool=m.cpuMemory.filter(i=>i!==firstIndex&&!m.done.includes(i)&&!m.open.includes(i)&&memoryCardData(m.arr[i]).key===key);return pool.length?pool[Math.floor(Math.random()*pool.length)]:null
+}
+function updateMemoryStatus(){
+  let m=memGame,e=$('#memStatus');if(!e||!m)return;
+  if(m.type==='solo'){e.textContent=`54枚・ペア ${m.done.length/2}/27　ミス ${m.miss}`;return}
+  let who=m.cpu?(m.turn===0?'あなた':'CPU'):`プレイヤー${m.turn+1}`;
+  let scoreText=m.cpu?`あなた ${m.scores[0]} - ${m.scores[1]} CPU`:`${m.scores[0]} - ${m.scores[1]}`;
+  e.innerHTML=`54枚・${who}の番　${scoreText}${m.cpu&&m.turn===1&&m.cpuThinking?'<span class="cpuThinking">考え中…</span>':''}`
+}
+function resetMemoryCard(i){let x=$('#m'+i);if(x){x.textContent='?';x.classList.remove('open')}}
+function finishMemoryMiss(a,b){
+  let m=memGame;[a,b].forEach(resetMemoryCard);m.open=[];
+  if(m.type==='solo')m.miss++;else m.turn=1-m.turn;m.locked=false;updateMemoryStatus();
+  if(m.cpu&&m.turn===1&&!m.ended)setTimeout(cpuMemoryTurn,260)
+}
+function flip(i,actor='human'){
+  let m=memGame;if(!m||m.ended||m.locked||m.done.includes(i)||m.open.includes(i)||m.open.length>=2)return;
+  if(m.cpu&&m.type==='versus'){if(actor==='human'&&m.turn===1)return;if(actor==='cpu'&&m.turn!==1)return}
+  let e=$('#m'+i);if(!e)return;e.innerHTML=memoryFace(m.arr[i]);e.classList.add('open');m.open.push(i);cpuObserve(i);if(m.open.length<2)return;
+  m.locked=true;let[a,b]=m.open,da=memoryCardData(m.arr[a]),db=memoryCardData(m.arr[b]),hit=da.key===db.key;
+  if(hit){
+    m.done.push(a,b);m.cpuMemory=m.cpuMemory?.filter(x=>x!==a&&x!==b)||[];m.open=[];$('#m'+a)?.classList.add('done');$('#m'+b)?.classList.add('done');
+    if(m.type==='versus')m.scores[m.turn]++;m.locked=false;updateMemoryStatus();
+    if(m.done.length===54){memoryComplete();return}
+    if(m.cpu&&m.turn===1)setTimeout(cpuMemoryTurn,350);return
+  }
+  setTimeout(()=>finishMemoryMiss(a,b),650)
+}
+async function cpuMemoryTurn(){
+  let m=memGame;if(!m?.cpu||m.ended||m.turn!==1||m.locked||m.cpuThinking)return;
+  m.cpuThinking=true;updateMemoryStatus();let cfg=memoryCpuCfg();
+  await new Promise(r=>setTimeout(r,cfg.delay));if(m.ended||m.turn!==1){m.cpuThinking=false;updateMemoryStatus();return}
+  let pair=cpuKnownPairs(),first=null;
+  if(pair.length&&Math.random()<cfg.usePair){let p=pair[Math.floor(Math.random()*pair.length)];first=p[0]}else first=cpuRandomAvailable();
+  if(first==null){m.cpuThinking=false;return}m.cpuThinking=false;flip(first,'cpu');
+  await new Promise(r=>setTimeout(r,cfg.delay));if(m.ended||m.turn!==1||m.open.length!==1)return;
+  let second=null,known=cpuMatchingKnown(first);if(known!=null&&Math.random()<cfg.secondMatch)second=known;else second=cpuRandomAvailable([first]);
+  if(second!=null)flip(second,'cpu')
+}
+function memoryComplete(){
+  let m=memGame;if(!m||m.ended)return;m.ended=true;
+  if(m.type==='solo'){let reward=Math.max(5,30-Math.floor(m.miss/3));state.wallet+=reward;saveState();pop('COMPLETE！',`54枚クリア！<br>ミス ${m.miss}回<br>${shellIconHTML()}${reward}獲得`,'win','rare');return}
+  let winner=m.scores[0]===m.scores[1]?-1:m.scores[0]>m.scores[1]?0:1;if(winner>=0){state.wallet+=10;saveState()}
+  let title;if(winner<0)title='DRAW';else if(m.cpu)title=winner===0?'YOU WIN！':'CPU WIN！';else title=`プレイヤー${winner+1} WIN！`;
+  let sub=winner<0?'引き分け':`${shellIconHTML()}10獲得！`;pop(title,sub,winner===0||(!m.cpu&&winner>=0)?'win':'')
+}
+Object.assign(window,{memoryMode,startMemoryVersus,memoryVersusMenu,memoryCpuLevelMenu,startMemoryHumanVsHuman,startMemoryCPU,cpuMemoryTurn,flip,updateMemoryStatus,memoryComplete});
+
+
 syncConfig();</script></body></html>
