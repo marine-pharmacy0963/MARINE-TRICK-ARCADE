@@ -439,4 +439,73 @@ function drawCenterWatermark(ctx,{symbol,color,w,h}){
 }
 
 
+
+
+/* ARCADE V10 public index image optimization */
+async function reencodeDataUrl(src,maxSide=640,quality=.68){
+  if(!src||typeof src!=='string'||!src.startsWith('data:image/'))return src;
+  try{
+    let img=await loadImageMaybe(src);if(!img)return src;
+    let sw=img.naturalWidth||img.width||1,sh=img.naturalHeight||img.height||1;
+    let scale=Math.min(1,maxSide/Math.max(sw,sh));
+    let w=Math.max(1,Math.round(sw*scale)),h=Math.max(1,Math.round(sh*scale));
+    let cv=document.createElement('canvas');cv.width=w;cv.height=h;
+    let ctx=cv.getContext('2d',{alpha:true});ctx.clearRect(0,0,w,h);ctx.drawImage(img,0,0,w,h);
+    return cv.toDataURL('image/webp',quality);
+  }catch(e){return src}
+}
+async function optimizePublicDataImages(data){
+  let d=copyData(data),cache=new Map();
+  async function opt(src,max,q){
+    if(!src||typeof src!=='string'||!src.startsWith('data:image/'))return src;
+    let key=max+'|'+q+'|'+src;
+    if(cache.has(key))return cache.get(key);
+    let v=await reencodeDataUrl(src,max,q);cache.set(key,v);return v;
+  }
+  d.background=await opt(d.background,1280,.66);
+  if(d.dealer){
+    d.dealer.common=await opt(d.dealer.common,640,.68);
+    if(d.dealer.games)for(let k of Object.keys(d.dealer.games)){
+      let g=d.dealer.games[k];if(!g)continue;
+      for(let f of ['default','deal','cheer','sad','watch'])if(g[f])g[f]=await opt(g[f],640,.68);
+    }
+  }
+  if(Array.isArray(d.characters))for(let c of d.characters)c.image=await opt(c.image,640,.68);
+  if(Array.isArray(d.games))for(let g of d.games)g.iconImage=await opt(g.iconImage,512,.68);
+  if(Array.isArray(d.roulette))for(let r of d.roulette)r.image=await opt(r.image,512,.68);
+  if(d.cards){
+    d.cards.backImage=await opt(d.cards.backImage,640,.70);
+    d.cards.frontImage=await opt(d.cards.frontImage,640,.70);
+    if(Array.isArray(d.cards.rankImages))for(let i=0;i<d.cards.rankImages.length;i++)d.cards.rankImages[i]=await opt(d.cards.rankImages[i],640,.70);
+    d.cards.jokerImage=await opt(d.cards.jokerImage,640,.70);
+  }
+  if(Array.isArray(d.raceComics))for(let i=0;i<d.raceComics.length;i++)d.raceComics[i]=await opt(d.raceComics[i],960,.72);
+  return d;
+}
+function buildPublicHTMLWithData(publicPayload){
+  let clone=document.documentElement.cloneNode(true);
+  clone.querySelectorAll('[data-master],#admin-script,#master-config,#adminOverlay').forEach(e=>e.remove());
+  let runtime=clone.querySelector('#public-runtime'),code=runtime.textContent;runtime.remove();
+  clone.querySelector('#home').classList.remove('hidden');clone.querySelector('#screen').classList.add('hidden');clone.querySelector('#screen').innerHTML='';
+  let boot=document.createElement('script'),data=JSON.stringify(publicPayload).replace(/</g,'\\u003c'),encoded=encodeUTF8(code);
+  boot.textContent=`window.__PUBLIC__=${data};Function(new TextDecoder().decode(Uint8Array.from(atob('${encoded}'),c=>c.charCodeAt(0))))();`;
+  clone.querySelector('body').appendChild(boot);
+  return '<!doctype html>'+minifyHTML(clone.outerHTML)
+}
+async function exportPublic(){
+  normalizeDealerAdmin(admin);ensureArcadeAssetAdmin(admin);ensureRaceComicAdmin(admin);admin.updatedAt=new Date().toLocaleString('ja-JP');
+  let btn=(typeof event!=='undefined'&&event&&event.currentTarget)?event.currentTarget:null,old=btn&&btn.textContent;
+  if(btn){btn.disabled=true;btn.textContent='画像圧縮中…'}
+  try{
+    let raw=publicData(),optimized=await optimizePublicDataImages(raw),html=buildPublicHTMLWithData(optimized);
+    let ok=download('index.html',html,'text/html;charset=utf-8');adminSave(false);if(!ok)return;
+    let checks=verifyPublicSource(html),mb=(new Blob([html])).size/1024/1024;
+    if(checks.ok)alert(`index.htmlを書き出しました\n公開画像を軽量化：OK\n管理情報除去：OK\nサイズ：約${mb.toFixed(1)}MB`);
+    else alert('書き出しましたが検査に失敗：'+checks.errors.join(' / ')+`\nサイズ：約${mb.toFixed(1)}MB`)
+  }catch(e){alert('index.htmlの生成に失敗しました\n'+storageErrorText(e))}
+  finally{if(btn){btn.disabled=false;btn.textContent=old||'🌐 index.html書き出し'}}
+}
+Object.assign(window,{exportPublic,optimizePublicDataImages,reencodeDataUrl});
+
+
 syncConfig();</script></body></html>
