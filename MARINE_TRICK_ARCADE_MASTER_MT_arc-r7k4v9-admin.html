@@ -927,7 +927,7 @@ function startMemorySolo(){
   memGame=Object.assign(memGame,{type:'solo',level,arr,open:[],done:[],miss:0,ended:false,locked:false,cpu:false});
   let rule=`<div class="memoryRules"><b>1人プレイルール：</b>LEVEL 1からスタートし、クリアするたびカードが増えます。LEVEL 6はトランプ54枚。<br><strong>ミス0〜3回＝5倍 / 4〜5回＝4倍 / 6〜7回＝3倍 / 8〜10回＝2倍 / 11〜15回＝1倍</strong>。16回目のミスでそのLEVELは失敗です。</div>`;
   let cls=count>=40?'memoryGrid fullDeck':'memoryGrid adaptiveMemory',style=count>=40?'':` style="--mem-cols:${count<=8?4:6};--mem-height:${count<=12?72:count<=20?58:count<=30?47:38}px"`;
-  shell('🧠 神経衰弱',`<div class="gameTable memoryTable"><div class="gameStatus" id="memStatus"></div>${rule}<div class="${cls}"${style}>${arr.map((x,i)=>`<button class="memoryCard" id="m${i}" onclick="flip(${i})">?</button>`).join('')}</div></div>`,'カード枚数が少しずつ増える6LEVELに挑戦！');
+  shell('🧠 神経衰弱',`<div class="gameTable memoryTable"><div class="gameStatus" id="memStatus"></div>${rule}<div class="${cls}"${style}>${arr.map((x,i)=>`<button class="memoryCard" id="m${i}" onclick="flip(${i})">?</button>`).join('')}</div><div id="memoryNextFallback" class="actionBar hidden"></div></div>`,'カード枚数が少しずつ増える6LEVELに挑戦！');
   updateMemoryStatus()
 }
 function memoryGoNext(){
@@ -977,7 +977,13 @@ function cpuMatchingKnown(firstIndex){
 }
 function updateMemoryStatus(){
   let m=memGame,e=$('#memStatus');if(!e||!m)return;
-  if(m.type==='solo'){let total=m.arr.length,pairs=total/2,mult=memorySoloMultiplier(m.miss);e.textContent=`LEVEL ${m.level+1}/6・${total}枚　ペア ${m.done.length/2}/${pairs}　ミス ${m.miss}/15　${mult}倍`;return}
+  if(m.type==='solo'){
+    let total=m.arr.length,pairs=total/2,mult=memorySoloMultiplier(m.miss);
+    e.textContent=`LEVEL ${m.level+1}/6・${total}枚　ペア ${m.done.length/2}/${pairs}　ミス ${m.miss}/15　${mult}倍`;
+    /* 旧flipが残る環境でも、盤面が全部そろった事実を最優先してクリア処理へ送る */
+    if(!m.ended&&m.done.length>=m.arr.length)Promise.resolve().then(()=>{if(memGame===m&&!m.ended&&m.done.length>=m.arr.length)memoryComplete()});
+    return
+  }
   let who=m.cpu?(m.turn===0?'あなた':'CPU'):`プレイヤー${m.turn+1}`;
   let scoreText=m.cpu?`あなた ${m.scores[0]} - ${m.scores[1]} CPU`:`${m.scores[0]} - ${m.scores[1]}`;
   e.innerHTML=`54枚・${who}の番　${scoreText}${m.cpu&&m.turn===1&&m.cpuThinking?'<span class="cpuThinking">考え中…</span>':''}`
@@ -1020,19 +1026,41 @@ async function cpuMemoryTurn(){
 function memoryComplete(){
   let m=memGame;if(!m||m.ended)return;m.ended=true;m.locked=true;
   if(m.type==='solo'){
-    let mult=memorySoloMultiplier(m.miss),reward=(m.level+1)*mult;state.wallet+=reward;saveState();
-    let last=m.level>=MEMORY_SOLO_LEVELS.length-1,rarity=m.level>=4&&mult>=4?'legendary':m.level>=2||mult>=4?'rare':'normal';
+    let mult=memorySoloMultiplier(m.miss),reward=(m.level+1)*mult,last=m.level>=MEMORY_SOLO_LEVELS.length-1;
+    let rarity=m.level>=4&&mult>=4?'legendary':m.level>=2||mult>=4?'rare':'normal';
+
+    /* 最優先：保存処理や演出に失敗しても、次LEVELボタンだけは必ず盤面上に出す */
+    let fallback=document.getElementById('memoryNextFallback');
+    if(fallback){
+      fallback.classList.remove('hidden');
+      fallback.innerHTML=last
+        ? '<strong>🎉 LEVEL 6 CLEAR！ 全ステージクリア！</strong>'
+        : `<strong>🎉 LEVEL ${m.level+1} CLEAR！</strong><button class="btn gold bigContinue" type="button" onclick="memoryGoNext()">次のLEVELへ</button>`;
+    }
+
     let main=document.querySelector('.memoryTable');
-    if(main){
+    if(main&&!fallback){
       let old=main.querySelector('.memoryClearActions');if(old)old.remove();
       let box=document.createElement('div');box.className='memoryClearActions actionBar';
       box.innerHTML=last?'<strong>🎉 LEVEL 6 CLEAR！ 全ステージクリア！</strong>':`<strong>🎉 LEVEL ${m.level+1} CLEAR！</strong><button class="btn gold bigContinue" type="button" onclick="memoryGoNext()">次のLEVELへ</button>`;
       main.appendChild(box);
     }
-    document.querySelectorAll('.popup.memoryClearPopup').forEach(x=>x.remove());
-    let el=document.createElement('div');el.className='popup memoryClearPopup';
-    el.innerHTML=`<div class="popupBox winPopup ${rarity}"><h2>${last?'ALL CLEAR！':'LEVEL CLEAR！'}</h2><p class="bigReward">LEVEL ${m.level+1}・${m.arr.length}枚<br>ミス ${m.miss}回・${mult}倍<br>${shellIconHTML()}${reward}獲得！</p>${last?'<p>LEVEL 6・54枚まで全ステージクリア！</p><button class="btn gold" type="button" onclick="this.closest(\'.popup\').remove()">閉じる</button>':'<button class="btn gold bigContinue" type="button" onclick="memoryAdvanceFromPopup(this)">次のLEVELへ</button>'}</div>`;
-    document.body.appendChild(el);celebrateLevel(rarity);return;
+
+    /* 報酬は二重加算を防ぎつつ保存。保存エラーでもゲーム進行は止めない */
+    if(!m.rewardGranted){
+      m.rewardGranted=true;
+      try{state.wallet+=reward;saveState()}catch(err){console.warn('memory reward save failed',err);try{renderWallet()}catch(_){}}
+    }
+
+    /* 結果ポップアップは補助導線。ここが失敗しても盤面上ボタンは残る */
+    try{
+      document.querySelectorAll('.popup.memoryClearPopup').forEach(x=>x.remove());
+      let el=document.createElement('div');el.className='popup memoryClearPopup';
+      el.innerHTML=`<div class="popupBox winPopup ${rarity}"><h2>${last?'ALL CLEAR！':'LEVEL CLEAR！'}</h2><p class="bigReward">LEVEL ${m.level+1}・${m.arr.length}枚<br>ミス ${m.miss}回・${mult}倍<br>🐚${reward}獲得！</p>${last?'<p>LEVEL 6・54枚まで全ステージクリア！</p><button class="btn gold" type="button" onclick="this.closest(\'.popup\').remove()">閉じる</button>':'<button class="btn gold bigContinue" type="button" onclick="memoryAdvanceFromPopup(this)">次のLEVELへ</button>'}</div>`;
+      document.body.appendChild(el);
+      try{celebrateLevel(rarity)}catch(_){}
+    }catch(err){console.warn('memory clear popup failed',err)}
+    return
   }
   let winner=m.scores[0]===m.scores[1]?-1:m.scores[0]>m.scores[1]?0:1;if(winner>=0){state.wallet+=10;saveState()}
   let title;if(winner<0)title='DRAW';else if(m.cpu)title=winner===0?'YOU WIN！':'CPU WIN！';else title=`プレイヤー${winner+1} WIN！`;
