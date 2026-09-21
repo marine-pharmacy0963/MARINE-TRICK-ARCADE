@@ -908,12 +908,18 @@ const MEMORY_SOLO_LEVELS=[8,12,20,30,40,54];
 function memorySoloMultiplier(miss){return miss<=3?5:miss<=5?4:miss<=7?3:miss<=10?2:miss<=15?1:0}
 function makeMemorySoloDeck(count){
   count=Math.max(2,Math.min(54,+count||8));if(count%2)count--;
-  let full=makeMemoryDeck54();if(count===54)return full;
-  let by={};for(let c of full){let k=memoryCardData(c).key;if(k==='JOKER')continue;(by[k]||(by[k]=[])).push(c)}
-  let groups=shuffle(Object.values(by).filter(g=>g.length>=4)),arr=[],remaining=count;
-  while(remaining>=4&&groups.length){arr.push(...shuffle(groups.pop().slice()).slice(0,4));remaining-=4}
-  if(remaining===2){let g=groups.length?groups.pop():Object.values(by)[0];arr.push(...shuffle(g.slice()).slice(0,2))}
-  return shuffle(arr)
+  let full=makeMemoryDeck54();if(count===54)return shuffle(full.slice());
+  let pairCount=count/2,by={};
+  for(let c of full){let k=memoryCardData(c).key;if(k==='JOKER')continue;(by[k]||(by[k]=[])).push(c)}
+  let keys=shuffle(Object.keys(by)),selected=[],used={};
+  /* まず各数字から1組ずつ選び、序盤で同じ数字ばかり並ばないようにする */
+  for(let k of keys){if(selected.length>=pairCount)break;let cards=shuffle(by[k].slice());selected.push(cards.slice(0,2));used[k]=new Set(selected[selected.length-1])}
+  /* 14組目以降など、13種類を超えた分だけ同じ数字の残り2枚を第2ペアとして使う */
+  if(selected.length<pairCount){
+    let extraKeys=shuffle(Object.keys(by));
+    for(let k of extraKeys){if(selected.length>=pairCount)break;let rest=by[k].filter(c=>!used[k]?.has(c));if(rest.length>=2)selected.push(shuffle(rest.slice()).slice(0,2))}
+  }
+  return shuffle(selected.flat())
 }
 function startMemorySolo(){
   if(!memGame||memGame.type!=='solo')memGame={type:'solo',level:0,miss:0};
@@ -924,7 +930,15 @@ function startMemorySolo(){
   shell('🧠 神経衰弱',`<div class="gameTable memoryTable"><div class="gameStatus" id="memStatus"></div>${rule}<div class="${cls}"${style}>${arr.map((x,i)=>`<button class="memoryCard" id="m${i}" onclick="flip(${i})">?</button>`).join('')}</div></div>`,'カード枚数が少しずつ増える6LEVELに挑戦！');
   updateMemoryStatus()
 }
-function memoryNext(){if(!memGame||!memGame.ended||memGame.type!=='solo'||memGame.level>=MEMORY_SOLO_LEVELS.length-1)return;memGame.level++;startMemorySolo()}
+function memoryNext(){
+  if(!memGame||!memGame.ended||memGame.type!=='solo'||memGame.level>=MEMORY_SOLO_LEVELS.length-1)return;
+  memGame.level++;
+  startMemorySolo();
+}
+function memoryAdvanceFromPopup(btn){
+  let popup=btn&&btn.closest?btn.closest('.popup'):null;if(popup)popup.remove();
+  memoryNext();
+}
 function memoryRetry(){if(!memGame||memGame.type!=='solo')return;startMemorySolo()}
 function memoryMode(type){
   if(type==='solo'){memGame={type:'solo',level:0,miss:0};startMemorySolo();return}
@@ -1003,13 +1017,13 @@ function memoryComplete(){
   if(m.type==='solo'){
     let mult=memorySoloMultiplier(m.miss),reward=(m.level+1)*mult;state.wallet+=reward;saveState();
     let last=m.level>=MEMORY_SOLO_LEVELS.length-1,level=m.level>=4&&mult>=4?'legendary':m.level>=2||mult>=4?'rare':'normal';
-    let el=document.createElement('div');el.className='popup';el.innerHTML=`<div class="popupBox winPopup ${level}"><h2>${last?'ALL CLEAR！':'LEVEL CLEAR！'}</h2><p class="bigReward">LEVEL ${m.level+1}・${m.arr.length}枚<br>ミス ${m.miss}回・${mult}倍<br>${shellIconHTML()}${reward}獲得！</p>${last?'<p>LEVEL 6・54枚まで全ステージクリア！</p><button class="btn gold" onclick="this.parentElement.parentElement.remove()">閉じる</button>':'<button class="btn gold bigContinue" onclick="memoryNext();this.parentElement.parentElement.remove()">次のLEVELへ</button>'}</div>`;document.body.appendChild(el);celebrateLevel(level);return
+    let el=document.createElement('div');el.className='popup';el.innerHTML=`<div class="popupBox winPopup ${level}"><h2>${last?'ALL CLEAR！':'LEVEL CLEAR！'}</h2><p class="bigReward">LEVEL ${m.level+1}・${m.arr.length}枚<br>ミス ${m.miss}回・${mult}倍<br>${shellIconHTML()}${reward}獲得！</p>${last?'<p>LEVEL 6・54枚まで全ステージクリア！</p><button class="btn gold" onclick="this.parentElement.parentElement.remove()">閉じる</button>':'<button class="btn gold bigContinue" onclick="memoryAdvanceFromPopup(this)">次のLEVELへ</button>'}</div>`;document.body.appendChild(el);celebrateLevel(level);return
   }
   let winner=m.scores[0]===m.scores[1]?-1:m.scores[0]>m.scores[1]?0:1;if(winner>=0){state.wallet+=10;saveState()}
   let title;if(winner<0)title='DRAW';else if(m.cpu)title=winner===0?'YOU WIN！':'CPU WIN！';else title=`プレイヤー${winner+1} WIN！`;
   let sub=winner<0?'引き分け':`${shellIconHTML()}10獲得！`;pop(title,sub,winner===0||(!m.cpu&&winner>=0)?'win':'')
 }
-Object.assign(window,{memoryMode,startMemorySolo,startMemoryVersus,memoryNext,memoryRetry,memoryVersusMenu,memoryCpuLevelMenu,startMemoryHumanVsHuman,startMemoryCPU,cpuMemoryTurn,flip,updateMemoryStatus,memoryComplete});
+Object.assign(window,{memoryMode,startMemorySolo,startMemoryVersus,memoryNext,memoryAdvanceFromPopup,memoryRetry,memoryVersusMenu,memoryCpuLevelMenu,startMemoryHumanVsHuman,startMemoryCPU,cpuMemoryTurn,flip,updateMemoryStatus,memoryComplete});
 
 
 /* ARCADE V11 roulette public image persistence + desktop click reliability */
