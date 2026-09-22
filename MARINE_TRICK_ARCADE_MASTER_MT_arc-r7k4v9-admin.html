@@ -212,6 +212,59 @@ function pokerGuide(){let rows=[
 
 Object.assign(window,{setPlayers,resetWallet,choosePlayerIcon,back,openGame,setupRace,runRace,slot,startSlot,stopReel,highlow,hlGuess,blackjack,bjHit,bjStand,memory,flip,roulette,updateRouletteBet,spinRoulette,hlStart,hlDecision,bjStart,bjDecision,memoryMode,startMemorySolo,startMemoryVersus,poker,pokerStart,holdPoker,drawPoker,pokerDecision,memoryNext,raceChoices,raceUpdateQuote,raceAddTicket,raceRemoveTicket,pokerBetStart,pokerFold,pokerSettle,raceChangeType,raceSelectSlot,raceSelectChar,raceConfirmBets,raceEditBets,raceToggleEntrant,raceSetDrawType,raceConfirmDraw,hlReady,bjReady,bjRestart});
 function boot(){applyVisuals();renderHome()}boot();
+/* ARCADE touch/public asset hotfix (2026-09-22) */
+(function(){
+  const st=document.createElement('style');
+  st.id='arcade-touch-public-hotfix';
+  st.textContent=`
+    .memoryCard{touch-action:manipulation;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
+    .raceComicSolo{width:100%;max-width:100%;height:auto!important;min-height:0!important;overflow:visible!important;padding:10px 10px 58px!important}
+    .raceComicFrame{width:100%;height:auto!important;min-height:0!important;display:flex!important;align-items:center;justify-content:center;overflow:visible!important;border-radius:12px;background:#eefbff}
+    .raceComicFrame img{display:block!important;width:auto!important;height:auto!important;max-width:100%!important;max-height:min(68vh,720px)!important;object-fit:contain!important;object-position:center!important;border-radius:10px}
+    @media(max-width:820px){.raceComicFrame img{max-height:min(62vh,620px)!important}}
+  `;
+  document.head.appendChild(st);
+
+  /* iOS/iPadOS で click が脱落しても、touchend から確実にカードを進める。 */
+  let lastMemoryTouch=0;
+  document.addEventListener('touchend',function(ev){
+    const card=ev.target&&ev.target.closest?ev.target.closest('.memoryCard[id^="m"]'):null;
+    if(!card||card.disabled)return;
+    const index=Number(card.id.slice(1));if(!Number.isInteger(index))return;
+    ev.preventDefault();lastMemoryTouch=Date.now();
+    if(typeof window.flip==='function')window.flip(index);
+  },{passive:false});
+  document.addEventListener('click',function(ev){
+    const card=ev.target&&ev.target.closest?ev.target.closest('.memoryCard[id^="m"]'):null;
+    if(card&&Date.now()-lastMemoryTouch<700){ev.preventDefault();ev.stopImmediatePropagation()}
+  },true);
+})();
+
+/* 公開indexでも登録済みスロット画像を表示・回転させる。 */
+function publicSlotSymbols(){
+  let a=Array.isArray(config.slotSymbols)?config.slotSymbols:[];
+  if(a.length!==5)a=[{label:'💎',image:'',mult:10},{label:'⭐',image:'',mult:6},{label:'🐚',image:'',mult:4},{label:'🐬',image:'',mult:4},{label:'🍬',image:'',mult:4}];
+  return a.map((x,i)=>Object.assign({label:['💎','⭐','🐚','🐬','🍬'][i],image:'',mult:[10,6,4,4,4][i]},x||{}));
+}
+function publicSlotSymbolHTML(s){return s.image?`<img class="slotSymbolImg" src="${s.image}" alt="${esc(s.label||'絵柄')}">`:`<span>${esc(s.label||'?')}</span>`}
+function slot(mode){
+  let syms=publicSlotSymbols();
+  shell('🎰 SHELL SLOT',`<div class="gameTable"><div class="payTable">${syms.map(s=>`<span>${publicSlotSymbolHTML(s)} ×3＝${s.mult}倍</span>`).join('')}<span>同柄×2＝2倍</span></div><div class="slotMachine">${[0,1,2].map(i=>`<div class="reel" id="reel${i}">${publicSlotSymbolHTML(syms[2])}</div>`).join('')}</div><div class="stopGrid">${[0,1,2].map(i=>`<button id="stop${i}" class="btn pink" disabled onclick="stopReel(${i})">STOP ${i+1}</button>`).join('')}</div><div class="actionBar"><button id="spin" class="btn gold" onclick="startSlot('${mode}')">SPIN</button></div></div>`,mode==='medal'?'1回5シェル。止めた瞬間の絵柄が結果になるよ！':'3列を自分のタイミングで止めてね！')
+}
+function startSlot(mode){
+  if(slotState&&slotState.running)return;let syms=publicSlotSymbols(),bet=mode==='medal'?5:0;if(!spend(mode,bet)){dealerSay('シェルが足りないみたい。','sad');return}
+  slotState={mode,bet,running:true,stopped:[false,false,false],values:[0,0,0],ticks:[0,2,4]};let spin=$('#spin');if(spin)spin.disabled=true;
+  for(let i=0;i<3;i++){let r=$('#reel'+i),b=$('#stop'+i);if(r)r.classList.add('spinning');if(b)b.disabled=false}
+  dealerSay('高速回転スタート！好きな瞬間にSTOP！','watch');
+  slotState.timer=setInterval(()=>{for(let i=0;i<3;i++)if(!slotState.stopped[i]){slotState.ticks[i]=(slotState.ticks[i]+1)%syms.length;slotState.values[i]=slotState.ticks[i];let r=$('#reel'+i);if(r)r.innerHTML=publicSlotSymbolHTML(syms[slotState.values[i]])}},70)
+}
+function finishSlot(){
+  if(!slotState)return;clearInterval(slotState.timer);slotState.running=false;let syms=publicSlotSymbols(),a=slotState.values,mult=0;
+  if(a[0]===a[1]&&a[1]===a[2])mult=+syms[a[0]].mult||4;else if(a[0]===a[1]||a[1]===a[2]||a[0]===a[2])mult=2;
+  if(slotState.mode==='medal'&&mult){state.wallet+=slotState.bet*mult;saveState()}let spin=$('#spin');if(spin)spin.disabled=false;
+  pop(mult?'🎉 WIN!':'RESULT',mult?`${mult}倍！${slotState.mode==='medal'?` ${slotState.bet*mult}シェル獲得`:''}`:'はずれ！',mult?'win':'');dealerSay(mult?'そろった！ナイスストップ！':'惜しい！もう一度狙ってみよう。',mult?'cheer':'sad')
+}
+Object.assign(window,{slot,startSlot,finishSlot,publicSlotSymbols,publicSlotSymbolHTML});
 </script>
 <script id="admin-script" data-master>
 'use strict';const ADMIN_KEY='mta-admin-v2';let admin=loadAdmin();function copyData(v){return JSON.parse(JSON.stringify(v))}function defaults(){return{password:'3103',autoSave:true,allowPublicImageSave:false,updatedAt:'',background:'',dealerImage:window.__PUBLIC__.dealerImage,characters:copyData(window.__PUBLIC__.characters),games:copyData(window.__PUBLIC__.games),roulette:copyData(window.__PUBLIC__.roulette),imageMax:1024,imageQuality:.82}}function loadAdmin(){try{let a=JSON.parse(localStorage.getItem(ADMIN_KEY));return Object.assign(defaults(),a||{})}catch(e){return defaults()}}function publicData(){return{background:admin.background||'',allowPublicImageSave:!!admin.allowPublicImageSave,dealerImage:admin.dealerImage,characters:admin.characters.map(({name,emoji,image})=>({name,emoji,image})),games:admin.games.map(({id,name,icon,desc})=>({id,name,icon,desc})),roulette:admin.roulette.map(({label,image,color,group})=>({label,image,color,group}))}}function syncConfig(){config=window.__PUBLIC__=publicData();applyVisuals();renderHome()}function adminSave(show=false){admin.updatedAt=new Date().toLocaleString('ja-JP');localStorage.setItem(ADMIN_KEY,JSON.stringify(admin));syncConfig();if(show)alert('保存しました')}function maybeAdminSave(){if(admin.autoSave)adminSave()}function adminLogin(){let pw=prompt('管理パスワード');if(pw===admin.password)openAdmin();else if(pw!==null)alert('パスワードが違います')}function openAdmin(){let o=document.createElement('div');o.id='adminOverlay';o.className='adminOverlay';o.innerHTML=`<div class="adminBox"><div class="adminNav row"><button class="btn alt" onclick="closeAdmin()">← 閉じる</button><b>MARINE TRICK ARCADE 管理</b><button class="btn" onclick="adminSave(true)">💾 手動保存</button><button class="btn gold" onclick="exportPublic()">🌐 index.html書き出し</button><button class="btn pink" onclick="testAdminLogin()">🔑 ログイン確認</button></div><section class="panel"><h3>基本設定</h3><div class="adminGrid"><label>管理パスワード<input value="${esc(admin.password)}" onchange="admin.password=this.value;maybeAdminSave()"></label><label><input type="checkbox" ${admin.autoSave?'checked':''} onchange="admin.autoSave=this.checked;adminSave()"> 自動保存</label><label><input type="checkbox" ${admin.allowPublicImageSave?'checked':''} onchange="admin.allowPublicImageSave=this.checked;maybeAdminSave()"> 公開側の画像保存を許可</label><label>更新日時<input value="${esc(admin.updatedAt||'未保存')}" readonly></label><label>最大辺<select onchange="admin.imageMax=+this.value;maybeAdminSave()">${[512,1024,1600,2048].map(v=>`<option ${admin.imageMax===v?'selected':''}>${v}</option>`).join('')}</select></label><label>画像品質<input type="number" min="0.4" max="1" step="0.05" value="${admin.imageQuality}" onchange="admin.imageQuality=+this.value;maybeAdminSave()"></label></div></section><section class="panel"><h3>背景同期</h3><input type="file" accept="image/*" onchange="setBackground(this.files[0])"> <button class="btn danger" onclick="admin.background='';maybeAdminSave();openAdminRefresh()">解除</button></section><section class="panel"><h3>キャラクター個別登録・画像差し替え</h3>${admin.characters.map((c,i)=>adminChar(c,i)).join('')}</section><section class="panel"><h3>ゲーム表示・並び替え</h3>${admin.games.map((g,i)=>`<div class="adminItem"><b>${g.icon} ${esc(g.name)}</b><div><input value="${esc(g.name)}" onchange="admin.games[${i}].name=this.value;maybeAdminSave()"><input value="${esc(g.desc)}" onchange="admin.games[${i}].desc=this.value;maybeAdminSave()"></div><div><button class="btn alt" onclick="moveGame(${i},-1)">↑</button><button class="btn alt" onclick="moveGame(${i},1)">↓</button></div></div>`).join('')}</section><section class="panel"><h3>ルーレット盤 個別登録</h3><p>ラベル・画像・色・グループを各マスごとに設定できます。</p>${admin.roulette.map((r,i)=>adminRoulette(r,i)).join('')}</section><section class="panel"><h3>JSON 入出力</h3><button class="btn" onclick="exportJSON()">JSON書き出し</button> <input type="file" accept="application/json,.json" onchange="importJSON(this.files[0])"></section></div>`;document.body.appendChild(o)}function adminChar(c,i){return `<div class="adminItem"><div>${c.image?`<img class="thumb" src="${c.image}">`:c.emoji}</div><div><input value="${esc(c.name)}" onchange="admin.characters[${i}].name=this.value;maybeAdminSave()"><input value="${esc(c.emoji)}" maxlength="4" onchange="admin.characters[${i}].emoji=this.value;maybeAdminSave()"></div><div><input type="file" accept="image/*" onchange="setCharImage(${i},this.files[0])"><button class="btn danger" onclick="admin.characters[${i}].image='';maybeAdminSave();openAdminRefresh()">画像解除</button></div></div>`}function adminRoulette(r,i){return `<div class="adminItem"><div>${r.image?`<img class="thumb" src="${r.image}">`:`<b>${esc(r.label)}</b>`}</div><div><label>表示<input value="${esc(r.label)}" onchange="admin.roulette[${i}].label=this.value;maybeAdminSave()"></label><label>色<select onchange="admin.roulette[${i}].color=this.value;maybeAdminSave()"><option ${r.color==='PINK'?'selected':''}>PINK</option><option ${r.color==='AQUA'?'selected':''}>AQUA</option></select></label><label>組<select onchange="admin.roulette[${i}].group=this.value;maybeAdminSave()">${['ZERO','G1','G2','G3'].map(g=>`<option ${r.group===g?'selected':''}>${g}</option>`).join('')}</select></label></div><div><input type="file" accept="image/*" onchange="setRouletteImage(${i},this.files[0])"><button class="btn danger" onclick="admin.roulette[${i}].image='';maybeAdminSave();openAdminRefresh()">画像解除</button></div></div>`}function closeAdmin(){$('#adminOverlay')?.remove()}function openAdminRefresh(){closeAdmin();openAdmin()}function testAdminLogin(){let p=prompt('現在の管理パスワードを入力');alert(p===admin.password?'ログイン動作は正常です':'パスワードが違います')}async function compressImage(file){if(!file)return'';let bmp=await createImageBitmap(file),scale=Math.min(1,admin.imageMax/Math.max(bmp.width,bmp.height)),w=Math.round(bmp.width*scale),h=Math.round(bmp.height*scale),cv=document.createElement('canvas');cv.width=w;cv.height=h;cv.getContext('2d').drawImage(bmp,0,0,w,h);return cv.toDataURL(file.type==='image/png'?'image/png':'image/webp',admin.imageQuality)}async function setCharImage(i,f){admin.characters[i].image=await compressImage(f);maybeAdminSave();openAdminRefresh()}async function setRouletteImage(i,f){admin.roulette[i].image=await compressImage(f);maybeAdminSave();openAdminRefresh()}async function setBackground(f){admin.background=await compressImage(f);maybeAdminSave();openAdminRefresh()}function moveGame(i,d){let j=i+d;if(j<0||j>=admin.games.length)return;[admin.games[i],admin.games[j]]=[admin.games[j],admin.games[i]];maybeAdminSave();openAdminRefresh()}function exportJSON(){adminSave();download('MARINE_TRICK_ARCADE_backup.json',JSON.stringify({version:2,admin,state},null,2),'application/json')}function importJSON(f){if(!f)return;let r=new FileReader();r.onload=()=>{try{let x=JSON.parse(r.result);if(x.admin)admin=Object.assign(defaults(),x.admin);if(x.state)state=x.state;adminSave();openAdminRefresh();alert('JSONを読み込みました')}catch(e){alert('JSONを読み込めませんでした')}};r.readAsText(f)}function download(name,text,type){let b=new Blob([text],{type}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}function encodeUTF8(s){let bytes=new TextEncoder().encode(s),bin='';for(let i=0;i<bytes.length;i+=8192)bin+=String.fromCharCode(...bytes.subarray(i,i+8192));return btoa(bin)}function minifyHTML(s){return s.replace(/<!--[^]*?-->/g,'').replace(/>\s+</g,'><').trim()}function buildPublicHTML(){let clone=document.documentElement.cloneNode(true);clone.querySelectorAll('[data-master],#admin-script,#master-config,#adminOverlay').forEach(e=>e.remove());let runtime=clone.querySelector('#public-runtime');let code=runtime.textContent;runtime.remove();clone.querySelector('#home').classList.remove('hidden');clone.querySelector('#screen').classList.add('hidden');clone.querySelector('#screen').innerHTML='';let boot=document.createElement('script'),data=JSON.stringify(publicData()).replace(/</g,'\\u003c'),encoded=encodeUTF8(code);boot.textContent=`window.__PUBLIC__=${data};Function(new TextDecoder().decode(Uint8Array.from(atob('${encoded}'),c=>c.charCodeAt(0))))();`;clone.querySelector('body').appendChild(boot);return '<!doctype html>'+minifyHTML(clone.outerHTML)}function exportPublic(){adminSave();let html=buildPublicHTML();download('index.html',html,'text/html');let checks=verifyPublicSource(html);if(checks.ok)alert(`index.htmlを書き出しました\n管理情報除去：OK\n単一HTML：OK\nサイズ：${Math.round(html.length/1024)}KB`);else alert('書き出しましたが検査に失敗：'+checks.errors.join(' / '))}function verifyPublicSource(html){let errors=[];['3103','adminLogin','管理パスワード','JSON書き出し','exportPublic','mta-admin-v2'].forEach(x=>{if(html.includes(x))errors.push(x+' が残っています')});if(!html.includes('window.__PUBLIC__'))errors.push('公開データなし');if(!html.includes('data:image/webp;base64'))errors.push('ディーラー画像なし');return{ok:!errors.length,errors}}admin.roulette.forEach((r,i)=>r.group=i===0?'ZERO':i<=3?'G1':i<=6?'G2':'G3');admin.cards||={backImage:'',frontImage:'',centerNumbers:true};
@@ -344,8 +397,8 @@ Object.assign(window,{setRaceComicImage,clearRaceComicImage});
   
   /* race comics: always show the whole registered image */
   .comicSolo.raceComicSolo{min-height:0!important;padding:10px 10px 54px!important;overflow:visible!important}
-  .raceComicFrame{width:100%;height:min(62vh,560px);min-height:240px;display:grid;place-items:center;overflow:hidden;border-radius:12px;background:#eefbff}
-  .raceComicFrame img{display:block;width:100%!important;height:100%!important;max-width:100%!important;max-height:100%!important;object-fit:contain!important;object-position:center!important}
+  .raceComicFrame{width:100%;height:auto;min-height:0;display:flex;align-items:center;justify-content:center;overflow:visible;border-radius:12px;background:#eefbff}
+  .raceComicFrame img{display:block;width:auto!important;height:auto!important;max-width:100%!important;max-height:min(68vh,720px)!important;object-fit:contain!important;object-position:center!important}
   .comicSolo.raceComicSolo .comicCaption{bottom:7px}
   
   /* race track: runners nearly fill the lane */
@@ -363,7 +416,7 @@ Object.assign(window,{setRaceComicImage,clearRaceComicImage});
     #raceChoices .raceSlots{display:grid!important;grid-auto-flow:column;grid-auto-columns:minmax(180px,1fr)}
   }
   @media(max-width:600px){
-    .raceComicFrame{height:min(54vh,430px);min-height:200px}
+    .raceComicFrame{height:auto;min-height:0}.raceComicFrame img{max-height:min(62vh,620px)!important}
     .race .lane{height:70px!important}
     .race .runner{height:64px}
     .race .runner img{width:64px!important;height:64px!important;max-width:64px!important;max-height:64px!important}
