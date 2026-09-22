@@ -221,7 +221,15 @@ function boot(){applyVisuals();renderHome()}boot();
     .raceComicSolo{width:100%;max-width:100%;height:auto!important;min-height:0!important;overflow:visible!important;padding:10px 10px 58px!important}
     .raceComicFrame{width:100%;height:auto!important;min-height:0!important;display:flex!important;align-items:center;justify-content:center;overflow:visible!important;border-radius:12px;background:#eefbff}
     .raceComicFrame img{display:block!important;width:auto!important;height:auto!important;max-width:100%!important;max-height:min(68vh,720px)!important;object-fit:contain!important;object-position:center!important;border-radius:10px}
-    @media(max-width:820px){.raceComicFrame img{max-height:min(62vh,620px)!important}}
+    .slotPayCompact{display:flex;justify-content:center;align-items:center;gap:5px;flex-wrap:wrap;margin:8px 0!important}
+    .slotPayCompact span{display:inline-flex;align-items:center;gap:4px;min-height:32px;padding:3px 7px!important;line-height:1.15}
+    .slotPayCompact img{display:block;width:24px!important;height:24px!important;max-width:24px!important;max-height:24px!important;object-fit:contain;margin:0!important}
+    @media(min-width:681px){
+      #raceStage,#comicCover{overflow:visible!important}
+      .raceComicSolo{width:min(92vw,1400px)!important;max-width:none!important;left:50%;transform:translateX(-50%);padding:14px 14px 62px!important}
+      .raceComicFrame img{max-height:78vh!important}
+    }
+    @media(max-width:820px){.raceComicFrame img{max-height:72vh!important}}
   `;
   document.head.appendChild(st);
 
@@ -246,10 +254,10 @@ function publicSlotSymbols(){
   if(a.length!==5)a=[{label:'💎',image:'',mult:10},{label:'⭐',image:'',mult:6},{label:'🐚',image:'',mult:4},{label:'🐬',image:'',mult:4},{label:'🍬',image:'',mult:4}];
   return a.map((x,i)=>Object.assign({label:['💎','⭐','🐚','🐬','🍬'][i],image:'',mult:[10,6,4,4,4][i]},x||{}));
 }
-function publicSlotSymbolHTML(s){return s.image?`<img class="slotSymbolImg" src="${s.image}" alt="${esc(s.label||'絵柄')}">`:`<span>${esc(s.label||'?')}</span>`}
+function publicSlotSymbolHTML(s,compact=false){return s.image?`<img class="${compact?'slotPayIcon':'slotSymbolImg'}" src="${s.image}" alt="${esc(s.label||'絵柄')}">`:`<span>${esc(s.label||'?')}</span>`}
 function slot(mode){
   let syms=publicSlotSymbols();
-  shell('🎰 SHELL SLOT',`<div class="gameTable"><div class="payTable">${syms.map(s=>`<span>${publicSlotSymbolHTML(s)} ×3＝${s.mult}倍</span>`).join('')}<span>同柄×2＝2倍</span></div><div class="slotMachine">${[0,1,2].map(i=>`<div class="reel" id="reel${i}">${publicSlotSymbolHTML(syms[2])}</div>`).join('')}</div><div class="stopGrid">${[0,1,2].map(i=>`<button id="stop${i}" class="btn pink" disabled onclick="stopReel(${i})">STOP ${i+1}</button>`).join('')}</div><div class="actionBar"><button id="spin" class="btn gold" onclick="startSlot('${mode}')">SPIN</button></div></div>`,mode==='medal'?'1回5シェル。止めた瞬間の絵柄が結果になるよ！':'3列を自分のタイミングで止めてね！')
+  shell('🎰 SHELL SLOT',`<div class="gameTable"><div class="slotMachine">${[0,1,2].map(i=>`<div class="reel" id="reel${i}">${publicSlotSymbolHTML(syms[2])}</div>`).join('')}</div><div class="payTable slotPayCompact">${syms.map(s=>`<span>${publicSlotSymbolHTML(s,true)} ×3＝${s.mult}倍</span>`).join('')}<span>同柄×2＝2倍</span></div><div class="stopGrid">${[0,1,2].map(i=>`<button id="stop${i}" class="btn pink" disabled onclick="stopReel(${i})">STOP ${i+1}</button>`).join('')}</div><div class="actionBar"><button id="spin" class="btn gold" onclick="startSlot('${mode}')">SPIN</button></div></div>`,mode==='medal'?'1回5シェル。止めた瞬間の絵柄が結果になるよ！':'3列を自分のタイミングで止めてね！')
 }
 function startSlot(mode){
   if(slotState&&slotState.running)return;let syms=publicSlotSymbols(),bet=mode==='medal'?5:0;if(!spend(mode,bet)){dealerSay('シェルが足りないみたい。','sad');return}
@@ -264,7 +272,26 @@ function finishSlot(){
   if(slotState.mode==='medal'&&mult){state.wallet+=slotState.bet*mult;saveState()}let spin=$('#spin');if(spin)spin.disabled=false;
   pop(mult?'🎉 WIN!':'RESULT',mult?`${mult}倍！${slotState.mode==='medal'?` ${slotState.bet*mult}シェル獲得`:''}`:'はずれ！',mult?'win':'');dealerSay(mult?'そろった！ナイスストップ！':'惜しい！もう一度狙ってみよう。',mult?'cheer':'sad')
 }
-Object.assign(window,{slot,startSlot,finishSlot,publicSlotSymbols,publicSlotSymbolHTML});
+async function runRace(mode){
+  let market=raceMarket;if(!market||market.running||market.finished||!market.confirmed)return;
+  let entrants=mode==='draw'?market.entrants.slice():config.characters.map((_,i)=>i),type=mode==='draw'?market.drawType:'multiple',bets=mode==='draw'?[]:market.basket.map(b=>({...b,picks:b.picks.slice()})),bet=mode==='medal'?bets.reduce((n,b)=>n+b.bet,0):0;
+  if(!spend(mode,bet)){toast('シェルが足りないよ');return}
+  let ticket={mode,type,bets,bet,n:entrants.length,settled:false};raceTicket=ticket;market.running=true;
+  let order=mode==='draw'?shuffle(entrants.slice()):raceWeightedOrder(entrants,market.weights),area=$('#raceStage');
+  let table=area&&area.closest?area.closest('.gameTable'):null;if(table)table.style.overflow='visible';
+  area.innerHTML='<div id="comicCover"></div><div id="track"></div>';
+  for(let i=0;i<3;i++){
+    if(!area.isConnected||raceMarket!==market)return;
+    let raceComic=(config.raceComics&&config.raceComics[i])||'';
+    $('#comicCover').innerHTML=`<div class="comicSolo raceComicSolo"><div class="comicPage">${i+1}/3</div>${raceComic?`<div class="raceComicFrame"><img src="${raceComic}" alt="${['スタート','折り返し','最終直線'][i]}"></div>`:`<div class="comicChars">${charVisual(entrants[i%entrants.length],'126px')}${charVisual(entrants[(i+1)%entrants.length],'126px')}💨</div>`}<div class="comicCaption">${['一斉にスタート！','折り返し！先頭争い！','最後の直線へ！'][i]}</div></div>`;
+    await sleep(900)
+  }
+  if(!area.isConnected||raceMarket!==market)return;$('#comicCover').remove();
+  $('#track').innerHTML=`<div class="race running">${entrants.map(i=>`<div class="lane"><div class="runner" id="r${i}">${charVisual(i,'78px')}</div></div>`).join('')}<div class="finish"></div></div>`;
+  for(let tick=0;tick<=48+entrants.length*2;tick++){if(!area.isConnected||raceMarket!==market)return;for(let i of entrants){let runner=$('#r'+i),rank=order.indexOf(i),end=48+rank*2,base=tick/end,wave=Math.sin(tick*.24+i*2)*.08*Math.sin(Math.PI*Math.min(1,base)),progress=Math.min(1,Math.max(0,base+wave));runner.style.left=progress*Math.max(0,runner.parentElement.clientWidth-runner.offsetWidth-26)+'px'}await sleep(70)}
+  market.running=false;market.finished=true;finishRace(mode,order,ticket);area.insertAdjacentHTML('beforeend',`<div class="actionBar"><button class="btn gold" onclick="setupRace('${mode}')">次のレース・倍率更新</button></div>`)
+}
+Object.assign(window,{slot,startSlot,finishSlot,publicSlotSymbols,publicSlotSymbolHTML,runRace});
 </script>
 <script id="admin-script" data-master>
 'use strict';const ADMIN_KEY='mta-admin-v2';let admin=loadAdmin();function copyData(v){return JSON.parse(JSON.stringify(v))}function defaults(){return{password:'3103',autoSave:true,allowPublicImageSave:false,updatedAt:'',background:'',dealerImage:window.__PUBLIC__.dealerImage,characters:copyData(window.__PUBLIC__.characters),games:copyData(window.__PUBLIC__.games),roulette:copyData(window.__PUBLIC__.roulette),imageMax:1024,imageQuality:.82}}function loadAdmin(){try{let a=JSON.parse(localStorage.getItem(ADMIN_KEY));return Object.assign(defaults(),a||{})}catch(e){return defaults()}}function publicData(){return{background:admin.background||'',allowPublicImageSave:!!admin.allowPublicImageSave,dealerImage:admin.dealerImage,characters:admin.characters.map(({name,emoji,image})=>({name,emoji,image})),games:admin.games.map(({id,name,icon,desc})=>({id,name,icon,desc})),roulette:admin.roulette.map(({label,image,color,group})=>({label,image,color,group}))}}function syncConfig(){config=window.__PUBLIC__=publicData();applyVisuals();renderHome()}function adminSave(show=false){admin.updatedAt=new Date().toLocaleString('ja-JP');localStorage.setItem(ADMIN_KEY,JSON.stringify(admin));syncConfig();if(show)alert('保存しました')}function maybeAdminSave(){if(admin.autoSave)adminSave()}function adminLogin(){let pw=prompt('管理パスワード');if(pw===admin.password)openAdmin();else if(pw!==null)alert('パスワードが違います')}function openAdmin(){let o=document.createElement('div');o.id='adminOverlay';o.className='adminOverlay';o.innerHTML=`<div class="adminBox"><div class="adminNav row"><button class="btn alt" onclick="closeAdmin()">← 閉じる</button><b>MARINE TRICK ARCADE 管理</b><button class="btn" onclick="adminSave(true)">💾 手動保存</button><button class="btn gold" onclick="exportPublic()">🌐 index.html書き出し</button><button class="btn pink" onclick="testAdminLogin()">🔑 ログイン確認</button></div><section class="panel"><h3>基本設定</h3><div class="adminGrid"><label>管理パスワード<input value="${esc(admin.password)}" onchange="admin.password=this.value;maybeAdminSave()"></label><label><input type="checkbox" ${admin.autoSave?'checked':''} onchange="admin.autoSave=this.checked;adminSave()"> 自動保存</label><label><input type="checkbox" ${admin.allowPublicImageSave?'checked':''} onchange="admin.allowPublicImageSave=this.checked;maybeAdminSave()"> 公開側の画像保存を許可</label><label>更新日時<input value="${esc(admin.updatedAt||'未保存')}" readonly></label><label>最大辺<select onchange="admin.imageMax=+this.value;maybeAdminSave()">${[512,1024,1600,2048].map(v=>`<option ${admin.imageMax===v?'selected':''}>${v}</option>`).join('')}</select></label><label>画像品質<input type="number" min="0.4" max="1" step="0.05" value="${admin.imageQuality}" onchange="admin.imageQuality=+this.value;maybeAdminSave()"></label></div></section><section class="panel"><h3>背景同期</h3><input type="file" accept="image/*" onchange="setBackground(this.files[0])"> <button class="btn danger" onclick="admin.background='';maybeAdminSave();openAdminRefresh()">解除</button></section><section class="panel"><h3>キャラクター個別登録・画像差し替え</h3>${admin.characters.map((c,i)=>adminChar(c,i)).join('')}</section><section class="panel"><h3>ゲーム表示・並び替え</h3>${admin.games.map((g,i)=>`<div class="adminItem"><b>${g.icon} ${esc(g.name)}</b><div><input value="${esc(g.name)}" onchange="admin.games[${i}].name=this.value;maybeAdminSave()"><input value="${esc(g.desc)}" onchange="admin.games[${i}].desc=this.value;maybeAdminSave()"></div><div><button class="btn alt" onclick="moveGame(${i},-1)">↑</button><button class="btn alt" onclick="moveGame(${i},1)">↓</button></div></div>`).join('')}</section><section class="panel"><h3>ルーレット盤 個別登録</h3><p>ラベル・画像・色・グループを各マスごとに設定できます。</p>${admin.roulette.map((r,i)=>adminRoulette(r,i)).join('')}</section><section class="panel"><h3>JSON 入出力</h3><button class="btn" onclick="exportJSON()">JSON書き出し</button> <input type="file" accept="application/json,.json" onchange="importJSON(this.files[0])"></section></div>`;document.body.appendChild(o)}function adminChar(c,i){return `<div class="adminItem"><div>${c.image?`<img class="thumb" src="${c.image}">`:c.emoji}</div><div><input value="${esc(c.name)}" onchange="admin.characters[${i}].name=this.value;maybeAdminSave()"><input value="${esc(c.emoji)}" maxlength="4" onchange="admin.characters[${i}].emoji=this.value;maybeAdminSave()"></div><div><input type="file" accept="image/*" onchange="setCharImage(${i},this.files[0])"><button class="btn danger" onclick="admin.characters[${i}].image='';maybeAdminSave();openAdminRefresh()">画像解除</button></div></div>`}function adminRoulette(r,i){return `<div class="adminItem"><div>${r.image?`<img class="thumb" src="${r.image}">`:`<b>${esc(r.label)}</b>`}</div><div><label>表示<input value="${esc(r.label)}" onchange="admin.roulette[${i}].label=this.value;maybeAdminSave()"></label><label>色<select onchange="admin.roulette[${i}].color=this.value;maybeAdminSave()"><option ${r.color==='PINK'?'selected':''}>PINK</option><option ${r.color==='AQUA'?'selected':''}>AQUA</option></select></label><label>組<select onchange="admin.roulette[${i}].group=this.value;maybeAdminSave()">${['ZERO','G1','G2','G3'].map(g=>`<option ${r.group===g?'selected':''}>${g}</option>`).join('')}</select></label></div><div><input type="file" accept="image/*" onchange="setRouletteImage(${i},this.files[0])"><button class="btn danger" onclick="admin.roulette[${i}].image='';maybeAdminSave();openAdminRefresh()">画像解除</button></div></div>`}function closeAdmin(){$('#adminOverlay')?.remove()}function openAdminRefresh(){closeAdmin();openAdmin()}function testAdminLogin(){let p=prompt('現在の管理パスワードを入力');alert(p===admin.password?'ログイン動作は正常です':'パスワードが違います')}async function compressImage(file){if(!file)return'';let bmp=await createImageBitmap(file),scale=Math.min(1,admin.imageMax/Math.max(bmp.width,bmp.height)),w=Math.round(bmp.width*scale),h=Math.round(bmp.height*scale),cv=document.createElement('canvas');cv.width=w;cv.height=h;cv.getContext('2d').drawImage(bmp,0,0,w,h);return cv.toDataURL(file.type==='image/png'?'image/png':'image/webp',admin.imageQuality)}async function setCharImage(i,f){admin.characters[i].image=await compressImage(f);maybeAdminSave();openAdminRefresh()}async function setRouletteImage(i,f){admin.roulette[i].image=await compressImage(f);maybeAdminSave();openAdminRefresh()}async function setBackground(f){admin.background=await compressImage(f);maybeAdminSave();openAdminRefresh()}function moveGame(i,d){let j=i+d;if(j<0||j>=admin.games.length)return;[admin.games[i],admin.games[j]]=[admin.games[j],admin.games[i]];maybeAdminSave();openAdminRefresh()}function exportJSON(){adminSave();download('MARINE_TRICK_ARCADE_backup.json',JSON.stringify({version:2,admin,state},null,2),'application/json')}function importJSON(f){if(!f)return;let r=new FileReader();r.onload=()=>{try{let x=JSON.parse(r.result);if(x.admin)admin=Object.assign(defaults(),x.admin);if(x.state)state=x.state;adminSave();openAdminRefresh();alert('JSONを読み込みました')}catch(e){alert('JSONを読み込めませんでした')}};r.readAsText(f)}function download(name,text,type){let b=new Blob([text],{type}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}function encodeUTF8(s){let bytes=new TextEncoder().encode(s),bin='';for(let i=0;i<bytes.length;i+=8192)bin+=String.fromCharCode(...bytes.subarray(i,i+8192));return btoa(bin)}function minifyHTML(s){return s.replace(/<!--[^]*?-->/g,'').replace(/>\s+</g,'><').trim()}function buildPublicHTML(){let clone=document.documentElement.cloneNode(true);clone.querySelectorAll('[data-master],#admin-script,#master-config,#adminOverlay').forEach(e=>e.remove());let runtime=clone.querySelector('#public-runtime');let code=runtime.textContent;runtime.remove();clone.querySelector('#home').classList.remove('hidden');clone.querySelector('#screen').classList.add('hidden');clone.querySelector('#screen').innerHTML='';let boot=document.createElement('script'),data=JSON.stringify(publicData()).replace(/</g,'\\u003c'),encoded=encodeUTF8(code);boot.textContent=`window.__PUBLIC__=${data};Function(new TextDecoder().decode(Uint8Array.from(atob('${encoded}'),c=>c.charCodeAt(0))))();`;clone.querySelector('body').appendChild(boot);return '<!doctype html>'+minifyHTML(clone.outerHTML)}function exportPublic(){adminSave();let html=buildPublicHTML();download('index.html',html,'text/html');let checks=verifyPublicSource(html);if(checks.ok)alert(`index.htmlを書き出しました\n管理情報除去：OK\n単一HTML：OK\nサイズ：${Math.round(html.length/1024)}KB`);else alert('書き出しましたが検査に失敗：'+checks.errors.join(' / '))}function verifyPublicSource(html){let errors=[];['3103','adminLogin','管理パスワード','JSON書き出し','exportPublic','mta-admin-v2'].forEach(x=>{if(html.includes(x))errors.push(x+' が残っています')});if(!html.includes('window.__PUBLIC__'))errors.push('公開データなし');if(!html.includes('data:image/webp;base64'))errors.push('ディーラー画像なし');return{ok:!errors.length,errors}}admin.roulette.forEach((r,i)=>r.group=i===0?'ZERO':i<=3?'G1':i<=6?'G2':'G3');admin.cards||={backImage:'',frontImage:'',centerNumbers:true};
@@ -674,7 +701,8 @@ Object.assign(window,{drawCenterWatermark,optimizePublicDataImages,ensurePublicE
     .shellIconImg{width:28px;height:28px;object-fit:contain;vertical-align:middle;margin-right:4px}
     .shellInlineImg{width:1.35em;height:1.35em;object-fit:contain;vertical-align:-.3em;margin-right:.12em}
     .slotSymbolImg{width:min(76px,78%);height:min(76px,78%);object-fit:contain;display:block;margin:auto}
-    .slotPaySymbol{display:inline-flex;align-items:center;gap:5px}.slotPaySymbol img{width:26px;height:26px;object-fit:contain}
+    .slotPaySymbol{display:inline-flex;align-items:center;gap:4px;min-height:32px;padding:3px 7px!important;line-height:1.15}.slotPaySymbol img{display:block;width:24px!important;height:24px!important;max-width:24px!important;max-height:24px!important;object-fit:contain;margin:0!important}
+    .slotPayCompact{margin:8px 0!important;gap:5px!important}
     .memoryRules{margin:8px 0 12px;padding:10px 12px;border-radius:14px;background:#ffffffd9;color:#073653;font-weight:850;line-height:1.5}
     .memoryGrid.fullDeck{grid-template-columns:repeat(9,minmax(0,1fr));gap:5px}
     .memoryGrid.fullDeck .memoryCard{width:100%;min-width:0;aspect-ratio:5/7;height:auto!important;min-height:0!important;overflow:hidden}
@@ -738,7 +766,7 @@ function getSlotSymbols(){ensureConfigV12();return config.slotSymbols}
 function slotSymbolHTML(sym,cls='slotSymbolImg'){return sym.image?`<img class="${cls}" src="${sym.image}" alt="${esc(sym.label||'絵柄')}">`:`<span>${esc(sym.label||'?')}</span>`}
 function slot(mode){
   ensureConfigV12();let syms=getSlotSymbols();
-  shell('🎰 SHELL SLOT',`<div class="gameTable"><div class="gameStatus">残り <span id="slotRemain">${shellText(state.wallet)}</span></div><div class="payTable">${syms.map((s,i)=>`<span class="slotPaySymbol">${slotSymbolHTML(s,'')} ×3＝${s.mult}倍</span>`).join('')}<span>同柄×2＝2倍</span></div><div class="slotMachine">${[0,1,2].map(i=>`<div class="reel" id="reel${i}">${slotSymbolHTML(syms[2])}</div>`).join('')}</div><div class="stopGrid">${[0,1,2].map(i=>`<button id="stop${i}" class="btn pink" disabled onclick="stopReel(${i})">STOP ${i+1}</button>`).join('')}</div>${mode==='medal'?`<label>かけるシェル <input id="slotBet" type="number" min="1" max="20" value="5"></label>`:''}<div class="actionBar"><button id="spin" class="btn gold" onclick="startSlot('${mode}')">SPIN</button></div></div>`,mode==='medal'?'かけるシェル数を決めて、好きな瞬間に止めよう！':'3列を自分のタイミングで止めてね！')
+  shell('🎰 SHELL SLOT',`<div class="gameTable"><div class="gameStatus">残り <span id="slotRemain">${shellText(state.wallet)}</span></div><div class="slotMachine">${[0,1,2].map(i=>`<div class="reel" id="reel${i}">${slotSymbolHTML(syms[2])}</div>`).join('')}</div><div class="payTable slotPayCompact">${syms.map((s,i)=>`<span class="slotPaySymbol">${slotSymbolHTML(s,'')} ×3＝${s.mult}倍</span>`).join('')}<span>同柄×2＝2倍</span></div><div class="stopGrid">${[0,1,2].map(i=>`<button id="stop${i}" class="btn pink" disabled onclick="stopReel(${i})">STOP ${i+1}</button>`).join('')}</div>${mode==='medal'?`<label>かけるシェル <input id="slotBet" type="number" min="1" max="20" value="5"></label>`:''}<div class="actionBar"><button id="spin" class="btn gold" onclick="startSlot('${mode}')">SPIN</button></div></div>`,mode==='medal'?'かけるシェル数を決めて、好きな瞬間に止めよう！':'3列を自分のタイミングで止めてね！')
 }
 function startSlot(mode){
   if(slotState?.running)return;let syms=getSlotSymbols(),bet=mode==='medal'?Math.max(1,Math.min(20,+$('#slotBet')?.value||1)):0;
@@ -987,8 +1015,9 @@ function memoryGoNext(){
   let m=memGame;
   if(!m||m.type!=='solo'||m.level>=MEMORY_SOLO_LEVELS.length-1)return false;
   document.querySelectorAll('.popup.memoryClearPopup').forEach(x=>x.remove());
-  m.level=Number(m.level||0)+1;
-  m.ended=false;m.locked=false;
+  /* 終了済みオブジェクトを再利用せず、次LEVEL専用の新しい状態を作る。 */
+  let nextLevel=Math.min(MEMORY_SOLO_LEVELS.length-1,Number(m.level||0)+1);
+  memGame={type:'solo',level:nextLevel,miss:0,open:[],done:[],ended:false,locked:false,cpu:false};
   startMemorySolo();
   return true;
 }
@@ -996,6 +1025,10 @@ function memoryNext(){return memoryGoNext()}
 function memoryAdvanceFromPopup(btn){
   let popup=btn&&btn.closest?btn.closest('.popup'):null;if(popup)popup.remove();
   return memoryGoNext();
+}
+function memoryForceNext(ev){
+  if(ev){ev.preventDefault();ev.stopPropagation()}
+  return memoryGoNext()
 }
 function memoryRetry(){if(!memGame||memGame.type!=='solo')return;startMemorySolo()}
 function memoryMode(type){
@@ -1088,14 +1121,14 @@ function memoryComplete(){
       fallback.classList.remove('hidden');
       fallback.innerHTML=last
         ? '<strong>🎉 LEVEL 6 CLEAR！ 全ステージクリア！</strong>'
-        : `<strong>🎉 LEVEL ${m.level+1} CLEAR！</strong><button class="btn gold bigContinue" type="button" onclick="memoryGoNext()">次のLEVELへ</button>`;
+        : `<strong>🎉 LEVEL ${m.level+1} CLEAR！</strong><button class="btn gold bigContinue memoryNextButton" data-memory-next="1" type="button">次のLEVELへ</button>`;
     }
 
     let main=document.querySelector('.memoryTable');
     if(main&&!fallback){
       let old=main.querySelector('.memoryClearActions');if(old)old.remove();
       let box=document.createElement('div');box.className='memoryClearActions actionBar';
-      box.innerHTML=last?'<strong>🎉 LEVEL 6 CLEAR！ 全ステージクリア！</strong>':`<strong>🎉 LEVEL ${m.level+1} CLEAR！</strong><button class="btn gold bigContinue" type="button" onclick="memoryGoNext()">次のLEVELへ</button>`;
+      box.innerHTML=last?'<strong>🎉 LEVEL 6 CLEAR！ 全ステージクリア！</strong>':`<strong>🎉 LEVEL ${m.level+1} CLEAR！</strong><button class="btn gold bigContinue memoryNextButton" data-memory-next="1" type="button">次のLEVELへ</button>`;
       main.appendChild(box);
     }
 
@@ -1109,7 +1142,7 @@ function memoryComplete(){
     try{
       document.querySelectorAll('.popup.memoryClearPopup').forEach(x=>x.remove());
       let el=document.createElement('div');el.className='popup memoryClearPopup';
-      el.innerHTML=`<div class="popupBox winPopup ${rarity}"><h2>${last?'ALL CLEAR！':'LEVEL CLEAR！'}</h2><p class="bigReward">LEVEL ${m.level+1}・${m.arr.length}枚<br>ミス ${m.miss}回・${mult}倍<br>🐚${reward}獲得！</p>${last?'<p>LEVEL 6・54枚まで全ステージクリア！</p><button class="btn gold" type="button" onclick="this.closest(\'.popup\').remove()">閉じる</button>':'<button class="btn gold bigContinue" type="button" onclick="memoryAdvanceFromPopup(this)">次のLEVELへ</button>'}</div>`;
+      el.innerHTML=`<div class="popupBox winPopup ${rarity}"><h2>${last?'ALL CLEAR！':'LEVEL CLEAR！'}</h2><p class="bigReward">LEVEL ${m.level+1}・${m.arr.length}枚<br>ミス ${m.miss}回・${mult}倍<br>🐚${reward}獲得！</p>${last?'<p>LEVEL 6・54枚まで全ステージクリア！</p><button class="btn gold" type="button" onclick="this.closest(\'.popup\').remove()">閉じる</button>':'<button class="btn gold bigContinue memoryNextButton" data-memory-next="1" type="button">次のLEVELへ</button>'}</div>`;
       document.body.appendChild(el);
       try{celebrateLevel(rarity)}catch(_){}
     }catch(err){console.warn('memory clear popup failed',err)}
@@ -1120,7 +1153,10 @@ function memoryComplete(){
   let sub=winner<0?'引き分け':`${shellIconHTML()}10獲得！`;pop(title,sub,winner===0||(!m.cpu&&winner>=0)?'win':'')
 }
 
-Object.assign(window,{memoryMode,startMemorySolo,startMemoryVersus,memoryGoNext,memoryNext,memoryAdvanceFromPopup,memoryRetry,memoryVersusMenu,memoryCpuLevelMenu,startMemoryHumanVsHuman,startMemoryCPU,cpuMemoryTurn,flip,updateMemoryStatus,memoryComplete});
+/* inline onclickや端末差に依存しない、次LEVEL専用の委譲入力。 */
+document.addEventListener('click',function(ev){let b=ev.target&&ev.target.closest?ev.target.closest('[data-memory-next]'):null;if(b)memoryForceNext(ev)},true);
+document.addEventListener('touchend',function(ev){let b=ev.target&&ev.target.closest?ev.target.closest('[data-memory-next]'):null;if(b)memoryForceNext(ev)},{passive:false,capture:true});
+Object.assign(window,{memoryMode,startMemorySolo,startMemoryVersus,memoryGoNext,memoryNext,memoryAdvanceFromPopup,memoryForceNext,memoryRetry,memoryVersusMenu,memoryCpuLevelMenu,startMemoryHumanVsHuman,startMemoryCPU,cpuMemoryTurn,flip,updateMemoryStatus,memoryComplete});
 
 
 /* ARCADE V11 roulette public image persistence + desktop click reliability */
@@ -1194,5 +1230,22 @@ async function exportPublic(){
 }
 Object.assign(window,{publicData,optimizePublicDataImages,exportPublic,syncRoulettePublicImages});
 
+/* ARCADE layout/input final integration */
+(function(){
+  const st=document.createElement('style');st.id='arcade-final-layout-20260922';st.textContent=`
+    .slotPayCompact{display:flex!important;justify-content:center;align-items:center;gap:5px!important;flex-wrap:wrap;margin:8px 0!important}
+    .slotPayCompact span{min-height:32px!important;padding:3px 7px!important;line-height:1.15!important}
+    .slotPayCompact img{width:24px!important;height:24px!important;max-width:24px!important;max-height:24px!important;margin:0!important;object-fit:contain!important}
+    @media(min-width:681px){
+      #raceStage,#comicCover{overflow:visible!important}
+      .raceComicSolo{width:min(92vw,1400px)!important;max-width:none!important;left:50%!important;transform:translateX(-50%)!important;padding:14px 14px 62px!important}
+      .raceComicFrame img{max-height:78vh!important}
+    }
+    @media(min-width:681px) and (max-width:1024px){.raceComicSolo{width:94vw!important}.raceComicFrame img{max-height:74vh!important}}
+  `;document.head.appendChild(st)
+})();
+const runRaceWideBase=runRace;
+runRace=async function(mode){let area=$('#raceStage'),table=area&&area.closest?area.closest('.gameTable'):null;if(table)table.style.overflow='visible';return runRaceWideBase(mode)};
+Object.assign(window,{runRace});
 
 syncConfig();</script></body></html>
