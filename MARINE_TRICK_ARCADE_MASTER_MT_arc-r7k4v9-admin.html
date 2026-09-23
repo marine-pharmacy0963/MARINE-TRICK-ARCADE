@@ -294,6 +294,7 @@ async function runRace(mode){
 Object.assign(window,{slot,startSlot,finishSlot,publicSlotSymbols,publicSlotSymbolHTML,runRace});
 /* ARCADE V14 Memory CPU battle: 5 difficulty levels */
 (function(){
+(function(){
   let st=document.createElement('style');
   st.id='arcade-v14-memory-cpu';
   st.textContent=`
@@ -497,6 +498,7 @@ function memoryComplete(){
 document.addEventListener('click',function(ev){let b=ev.target&&ev.target.closest?ev.target.closest('[data-memory-next]'):null;if(b)memoryForceNext(ev)},true);
 document.addEventListener('touchend',function(ev){let b=ev.target&&ev.target.closest?ev.target.closest('[data-memory-next]'):null;if(b)memoryForceNext(ev)},{passive:false,capture:true});
 Object.assign(window,{memoryMode,startMemorySolo,startMemoryVersus,memoryGoNext,memoryNext,memoryAdvanceFromPopup,memoryForceNext,memoryRetry,memoryVersusMenu,memoryCpuLevelMenu,startMemoryHumanVsHuman,startMemoryCPU,cpuMemoryTurn,flip,updateMemoryStatus,memoryComplete});
+})();
 
 
 /* Public BLACKJACK wording: losing actions are always 続ける / やめる. */
