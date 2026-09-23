@@ -37,7 +37,7 @@ function ensureCardConfig(){config.cards||={backImage:'',frontImage:'',centerNum
 function rankText(v){return v===1?'A':v===11?'J':v===12?'Q':v===13?'K':v}
 function card(c,cls=''){ensureCardConfig();let r=rankText(c.v),red=c.s==='♥'||c.s==='♦',center=config.cards.frontImage?`<img src="${config.cards.frontImage}" alt="">`:'';if(config.cards.centerNumbers)center+=`<strong>${r}</strong><i>${c.s}</i>`;return `<span class="playing customCard ${red?'red':''} ${cls}"><b class="corner tl">${r}<small>${c.s}</small></b><span class="cardCenter">${center}</span><b class="corner br">${r}<small>${c.s}</small></b></span>`}
 function cardBack(cls=''){ensureCardConfig();return `<span class="playing customCard back ${cls}" ${config.cards.backImage?`style="background-image:url(${config.cards.backImage});background-size:cover;background-position:center"`:''}>${config.cards.backImage?'':'🐚'}</span>`}
-function openGame(id){let m={race:['🏁 MARINE RACE',modeUI('setupRace','<button class="btn pink" onclick="setupRace(\'draw\')">🎯 公平抽選</button>'),'漫画の向こうでレースが始まるよ！'],slot:['🎰 SHELL SLOT',modeUI('slot'),'何枚かけるか決めて、3列を止めよう！'],highlow:['🃏 HIGH & LOW',modeUI('highlow'),'勝つたび2倍。続けるか降りるかはあなた次第！'],blackjack:['♠️ BLACKJACK',modeUI('blackjack'),'勝ち分を次の勝負へ持ち越せるよ！'],memory:['🧠 神経衰弱','<div class="actionBar"><button class="btn" onclick="memoryMode(\'solo\')">1人プレイ</button><button class="btn pink" onclick="memoryMode(\'versus\')">対戦プレイ</button></div>','1人で段階クリア、または2人で50枚対戦！'],roulette:['🎯 MARINE ROULETTE',modeUI('roulette'),'色とグループをそろえた盤で予想しよう！'],poker:['♦️ MARINE POKER',modeUI('poker'),'残すカードを選んで交換。役を作ろう！']}[id];shell(...m)}
+function openGame(id){let m={race:['🏁 MARINE RACE',modeUI('setupRace','<button class="btn pink" onclick="setupRace(\'draw\')">🎯 公平抽選</button>'),'漫画の向こうでレースが始まるよ！'],slot:['🎰 SHELL SLOT',modeUI('slot'),'何枚かけるか決めて、3列を止めよう！'],highlow:['🃏 HIGH & LOW',modeUI('highlow'),'勝つたび2倍。続けるか降りるかはあなた次第！'],blackjack:['♠️ BLACKJACK',modeUI('blackjack'),'勝ち分を次の勝負へ持ち越せるよ！'],memory:['🧠 神経衰弱','<div class="actionBar"><button class="btn" type="button" data-memory-mode="solo">1人プレイ</button><button class="btn pink" type="button" data-memory-mode="versus">対戦プレイ</button></div>','1人で段階クリア、または2人で50枚対戦！'],roulette:['🎯 MARINE ROULETTE',modeUI('roulette'),'色とグループをそろえた盤で予想しよう！'],poker:['♦️ MARINE POKER',modeUI('poker'),'残すカードを選んで交換。役を作ろう！']}[id];shell(...m)}
 
 
 const slotSymbols3=[{s:'💎',m:10},{s:'⭐',m:6},{s:'🐚',m:4},{s:'🐬',m:4},{s:'🍬',m:4}];
@@ -153,7 +153,7 @@ function dealerVisual(gameId=currentDealerGame,mood='',id='dealerImg'){let d=res
 function dealerStage(message='ぼくが進行するよ！',mood=''){let visual=dealerVisual(currentDealerGame,mood);return `<div class="dealerStage ${visual?'':'noDealer'}">${visual}<div class="speech"><span class="dealerName">MARINE DEALER</span><span id="dealerWords">${esc(message)}</span></div><div id="fx" class="fx"></div></div>`}
 function dealerSay(message,mood='',delay=0){clearTimeout(dealerTimer);dealerTimer=setTimeout(()=>{let w=$('#dealerWords'),i=$('#dealerImg');if(w)w.textContent=message;if(i)i.className='dealerImg '+mood;if(mood==='cheer')celebrateLevel('normal')},delay)}
 function renderHome(){currentDealerGame='home';let d=$('#homeDealer'),visual=dealerVisual('home','', '');d.innerHTML=`<div class="dealerStage ${visual?'':'noDealer'}">${visual}<div class="speech"><span class="dealerName">MARINE DEALER</span>海底ゲームショーへようこそ！今日はどれで遊ぶ？</div></div>`;$('#gameGrid').innerHTML=config.games.map(g=>`<button class="gameTile" onclick="openGame('${g.id}')"><b>${g.icon} ${esc(g.name)}</b>${esc(g.desc)}</button>`).join('');renderWallet()}
-function openGame(id){currentDealerGame=id;let m={race:['🏁 MARINE RACE',modeUI('setupRace','<button class="btn pink" onclick="setupRace(\'draw\')">🎯 公平抽選</button>'),'漫画の向こうでレースが始まるよ！'],slot:['🎰 SHELL SLOT',modeUI('slot'),'何枚かけるか決めて、3列を止めよう！'],highlow:['🃏 HIGH & LOW',modeUI('highlow'),'勝つたび2倍。続けるか降りるかはあなた次第！'],blackjack:['♠️ BLACKJACK',modeUI('blackjack'),'勝ち分を次の勝負へ持ち越せるよ！'],memory:['🧠 神経衰弱','<div class="actionBar"><button class="btn" onclick="memoryMode(\'solo\')">1人プレイ</button><button class="btn pink" onclick="memoryMode(\'versus\')">対戦プレイ</button></div>','1人で段階クリア、または2人で50枚対戦！'],roulette:['🎯 MARINE ROULETTE',modeUI('roulette'),'色とグループをそろえた盤で予想しよう！'],poker:['♦️ MARINE POKER',modeUI('poker'),'残すカードを選んで交換。役を作ろう！']}[id];shell(...m)}
+function openGame(id){currentDealerGame=id;let m={race:['🏁 MARINE RACE',modeUI('setupRace','<button class="btn pink" onclick="setupRace(\'draw\')">🎯 公平抽選</button>'),'漫画の向こうでレースが始まるよ！'],slot:['🎰 SHELL SLOT',modeUI('slot'),'何枚かけるか決めて、3列を止めよう！'],highlow:['🃏 HIGH & LOW',modeUI('highlow'),'勝つたび2倍。続けるか降りるかはあなた次第！'],blackjack:['♠️ BLACKJACK',modeUI('blackjack'),'勝ち分を次の勝負へ持ち越せるよ！'],memory:['🧠 神経衰弱','<div class="actionBar"><button class="btn" type="button" data-memory-mode="solo">1人プレイ</button><button class="btn pink" type="button" data-memory-mode="versus">対戦プレイ</button></div>','1人で段階クリア、または2人で50枚対戦！'],roulette:['🎯 MARINE ROULETTE',modeUI('roulette'),'色とグループをそろえた盤で予想しよう！'],poker:['♦️ MARINE POKER',modeUI('poker'),'残すカードを選んで交換。役を作ろう！']}[id];shell(...m)}
 const arcadeBackBeforeV5=back;
 back=function(){currentDealerGame='home';arcadeBackBeforeV5()};
 function inferRarity(title,text){let s=String(title)+' '+String(text);return/20倍|12倍|10倍|全ステージ|大当たり/.test(s)?'legendary':/8倍|6倍|5倍|1位|LEVEL CLEAR/.test(s)?'rare':'normal'}
@@ -314,11 +314,11 @@ const MEMORY_CPU_LEVELS={
   5:{name:'LV5 エキスパート',remember:1,usePair:1,secondMatch:1,maxMemory:54,delay:520}
 };
 function memoryVersusMenu(){
-  shell('🧠 神経衰弱・対戦',`<div class="gameTable centeredGame"><div class="memoryRules"><b>対戦ルール：</b>54枚すべてを使い、スートが違っても同じ数字・A/J/Q/Kならペア。JOKERはJOKER同士です。ペアを取ったら続けてめくれます。</div><div class="memoryModeGrid"><button class="btn" onclick="startMemoryHumanVsHuman()">👥 2人で対戦</button><button class="btn pink" onclick="memoryCpuLevelMenu()">🤖 CPUと対戦</button></div><div class="actionBar"><button class="btn alt" onclick="openGame('memory')">← 戻る</button></div></div>`,'2人対戦かCPU対戦を選んでね！')
+  shell('🧠 神経衰弱・対戦',`<div class="gameTable centeredGame"><div class="memoryRules"><b>対戦ルール：</b>54枚すべてを使い、スートが違っても同じ数字・A/J/Q/Kならペア。JOKERはJOKER同士です。ペアを取ったら続けてめくれます。</div><div class="memoryModeGrid"><button class="btn" type="button" data-memory-action="human">👥 2人で対戦</button><button class="btn pink" type="button" data-memory-action="cpu-menu">🤖 CPUと対戦</button></div><div class="actionBar"><button class="btn alt" type="button" data-memory-action="main-menu">← 戻る</button></div></div>`,'2人対戦かCPU対戦を選んでね！')
 }
 function memoryCpuLevelMenu(){
-  let buttons=Object.entries(MEMORY_CPU_LEVELS).map(([lv,c])=>`<button class="btn ${+lv>=4?'pink':''}" onclick="startMemoryCPU(${lv})">${c.name}</button>`).join('');
-  shell('🤖 CPU対戦',`<div class="gameTable centeredGame"><div class="memoryRules"><b>CPUの強さ：</b>強いほど、これまで表になったカードをよく覚え、知っているペアを正確に取りにいきます。カードの中身を透視する処理はしません。</div><div class="cpuLevelGrid">${buttons}</div><div class="actionBar"><button class="btn alt" onclick="memoryVersusMenu()">← 戻る</button></div></div>`,'CPUの記憶力を選ぼう！')
+  let buttons=Object.entries(MEMORY_CPU_LEVELS).map(([lv,c])=>`<button class="btn ${+lv>=4?'pink':''}" type="button" data-memory-cpu="${lv}">${c.name}</button>`).join('');
+  shell('🤖 CPU対戦',`<div class="gameTable centeredGame"><div class="memoryRules"><b>CPUの強さ：</b>強いほど、これまで表になったカードをよく覚え、知っているペアを正確に取りにいきます。カードの中身を透視する処理はしません。</div><div class="cpuLevelGrid">${buttons}</div><div class="actionBar"><button class="btn alt" type="button" data-memory-action="versus-menu">← 戻る</button></div></div>`,'CPUの記憶力を選ぼう！')
 }
 function startMemoryHumanVsHuman(){memGame={type:'versus',turn:0,scores:[0,0],cpu:false};startMemory54('versus')}
 function startMemoryCPU(level){
@@ -494,9 +494,21 @@ function memoryComplete(){
   let sub=winner<0?'引き分け':`${shellIconHTML()}10獲得！`;pop(title,sub,winner===0||(!m.cpu&&winner>=0)?'win':'')
 }
 
-/* inline onclickや端末差に依存しない、次LEVEL専用の委譲入力。 */
-document.addEventListener('click',function(ev){let b=ev.target&&ev.target.closest?ev.target.closest('[data-memory-next]'):null;if(b)memoryForceNext(ev)},true);
-document.addEventListener('touchend',function(ev){let b=ev.target&&ev.target.closest?ev.target.closest('[data-memory-next]'):null;if(b)memoryForceNext(ev)},{passive:false,capture:true});
+/* 神経衰弱のメニューボタンと次LEVELを、inline onclickに依存せず処理する。 */
+function memoryDelegatedInput(ev){
+  let target=ev.target&&ev.target.closest?ev.target.closest('[data-memory-mode],[data-memory-action],[data-memory-cpu],[data-memory-next]'):null;if(!target)return;
+  ev.preventDefault();ev.stopPropagation();
+  if(target.hasAttribute('data-memory-next')){window.memoryForceNext(ev);return}
+  let mode=target.getAttribute('data-memory-mode');if(mode)window.memoryMode(mode)
+  let cpu=target.getAttribute('data-memory-cpu');if(cpu){window.startMemoryCPU(+cpu);return}
+  let action=target.getAttribute('data-memory-action');
+  if(action==='human')window.startMemoryHumanVsHuman();
+  else if(action==='cpu-menu')window.memoryCpuLevelMenu();
+  else if(action==='versus-menu')window.memoryVersusMenu();
+  else if(action==='main-menu')window.openGame('memory')
+}
+document.addEventListener('click',memoryDelegatedInput,true);
+document.addEventListener('touchend',memoryDelegatedInput,{passive:false,capture:true});
 Object.assign(window,{memoryMode,startMemorySolo,startMemoryVersus,memoryGoNext,memoryNext,memoryAdvanceFromPopup,memoryForceNext,memoryRetry,memoryVersusMenu,memoryCpuLevelMenu,startMemoryHumanVsHuman,startMemoryCPU,cpuMemoryTurn,flip,updateMemoryStatus,memoryComplete});
 })();
 
@@ -900,7 +912,7 @@ function verifyArcadePublicRuntime(){
   const required=[
     ['神経衰弱の6レベル','const MEMORY_SOLO_LEVELS=[8,12,20,30,40,54]'],
     ['神経衰弱の次レベル処理','function memoryGoNext()'],
-    ['神経衰弱のタッチ操作',"addEventListener('touchend',function(ev)"],
+    ['神経衰弱のタッチ操作',"addEventListener('touchend',memoryDelegatedInput"],
     ['神経衰弱CPUレベル5',"5:{name:'LV5 エキスパート'"],
     ['ブラックジャックの「続ける」','>続ける</button>'],
     ['ブラックジャックの「やめる」','>やめる</button>']
@@ -1207,11 +1219,11 @@ const MEMORY_CPU_LEVELS={
   5:{name:'LV5 エキスパート',remember:1,usePair:1,secondMatch:1,maxMemory:54,delay:520}
 };
 function memoryVersusMenu(){
-  shell('🧠 神経衰弱・対戦',`<div class="gameTable centeredGame"><div class="memoryRules"><b>対戦ルール：</b>54枚すべてを使い、スートが違っても同じ数字・A/J/Q/Kならペア。JOKERはJOKER同士です。ペアを取ったら続けてめくれます。</div><div class="memoryModeGrid"><button class="btn" onclick="startMemoryHumanVsHuman()">👥 2人で対戦</button><button class="btn pink" onclick="memoryCpuLevelMenu()">🤖 CPUと対戦</button></div><div class="actionBar"><button class="btn alt" onclick="openGame('memory')">← 戻る</button></div></div>`,'2人対戦かCPU対戦を選んでね！')
+  shell('🧠 神経衰弱・対戦',`<div class="gameTable centeredGame"><div class="memoryRules"><b>対戦ルール：</b>54枚すべてを使い、スートが違っても同じ数字・A/J/Q/Kならペア。JOKERはJOKER同士です。ペアを取ったら続けてめくれます。</div><div class="memoryModeGrid"><button class="btn" type="button" data-memory-action="human">👥 2人で対戦</button><button class="btn pink" type="button" data-memory-action="cpu-menu">🤖 CPUと対戦</button></div><div class="actionBar"><button class="btn alt" type="button" data-memory-action="main-menu">← 戻る</button></div></div>`,'2人対戦かCPU対戦を選んでね！')
 }
 function memoryCpuLevelMenu(){
-  let buttons=Object.entries(MEMORY_CPU_LEVELS).map(([lv,c])=>`<button class="btn ${+lv>=4?'pink':''}" onclick="startMemoryCPU(${lv})">${c.name}</button>`).join('');
-  shell('🤖 CPU対戦',`<div class="gameTable centeredGame"><div class="memoryRules"><b>CPUの強さ：</b>強いほど、これまで表になったカードをよく覚え、知っているペアを正確に取りにいきます。カードの中身を透視する処理はしません。</div><div class="cpuLevelGrid">${buttons}</div><div class="actionBar"><button class="btn alt" onclick="memoryVersusMenu()">← 戻る</button></div></div>`,'CPUの記憶力を選ぼう！')
+  let buttons=Object.entries(MEMORY_CPU_LEVELS).map(([lv,c])=>`<button class="btn ${+lv>=4?'pink':''}" type="button" data-memory-cpu="${lv}">${c.name}</button>`).join('');
+  shell('🤖 CPU対戦',`<div class="gameTable centeredGame"><div class="memoryRules"><b>CPUの強さ：</b>強いほど、これまで表になったカードをよく覚え、知っているペアを正確に取りにいきます。カードの中身を透視する処理はしません。</div><div class="cpuLevelGrid">${buttons}</div><div class="actionBar"><button class="btn alt" type="button" data-memory-action="versus-menu">← 戻る</button></div></div>`,'CPUの記憶力を選ぼう！')
 }
 function startMemoryHumanVsHuman(){memGame={type:'versus',turn:0,scores:[0,0],cpu:false};startMemory54('versus')}
 function startMemoryCPU(level){
@@ -1387,9 +1399,6 @@ function memoryComplete(){
   let sub=winner<0?'引き分け':`${shellIconHTML()}10獲得！`;pop(title,sub,winner===0||(!m.cpu&&winner>=0)?'win':'')
 }
 
-/* inline onclickや端末差に依存しない、次LEVEL専用の委譲入力。 */
-document.addEventListener('click',function(ev){let b=ev.target&&ev.target.closest?ev.target.closest('[data-memory-next]'):null;if(b)memoryForceNext(ev)},true);
-document.addEventListener('touchend',function(ev){let b=ev.target&&ev.target.closest?ev.target.closest('[data-memory-next]'):null;if(b)memoryForceNext(ev)},{passive:false,capture:true});
 Object.assign(window,{memoryMode,startMemorySolo,startMemoryVersus,memoryGoNext,memoryNext,memoryAdvanceFromPopup,memoryForceNext,memoryRetry,memoryVersusMenu,memoryCpuLevelMenu,startMemoryHumanVsHuman,startMemoryCPU,cpuMemoryTurn,flip,updateMemoryStatus,memoryComplete});
 
 
