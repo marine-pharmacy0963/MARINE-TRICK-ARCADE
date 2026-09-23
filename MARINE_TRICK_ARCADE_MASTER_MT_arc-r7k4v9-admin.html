@@ -292,6 +292,224 @@ async function runRace(mode){
   market.running=false;market.finished=true;finishRace(mode,order,ticket);area.insertAdjacentHTML('beforeend',`<div class="actionBar"><button class="btn gold" onclick="setupRace('${mode}')">次のレース・倍率更新</button></div>`)
 }
 Object.assign(window,{slot,startSlot,finishSlot,publicSlotSymbols,publicSlotSymbolHTML,runRace});
+/* ARCADE V14 Memory CPU battle: 5 difficulty levels */
+(function(){
+  let st=document.createElement('style');
+  st.id='arcade-v14-memory-cpu';
+  st.textContent=`
+    .cpuLevelGrid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px;margin:12px 0}
+    .cpuLevelGrid .btn{min-width:0;padding:10px 6px;font-size:13px}
+    .memoryModeGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;margin:12px 0}
+    .cpuThinking{display:inline-block;margin-left:7px;font-size:.85em;opacity:.78}
+    @media(max-width:600px){.cpuLevelGrid{grid-template-columns:repeat(2,minmax(0,1fr))}.cpuLevelGrid .btn:last-child{grid-column:1/-1}.memoryModeGrid{grid-template-columns:1fr}}
+  `;
+  document.head.appendChild(st);
+})();
+const MEMORY_CPU_LEVELS={
+  1:{name:'LV1 やさしい',remember:.28,usePair:.32,secondMatch:.38,maxMemory:6,delay:780},
+  2:{name:'LV2 ひかえめ',remember:.45,usePair:.50,secondMatch:.55,maxMemory:10,delay:720},
+  3:{name:'LV3 ふつう',remember:.65,usePair:.70,secondMatch:.72,maxMemory:18,delay:650},
+  4:{name:'LV4 つよい',remember:.85,usePair:.90,secondMatch:.90,maxMemory:32,delay:590},
+  5:{name:'LV5 エキスパート',remember:1,usePair:1,secondMatch:1,maxMemory:54,delay:520}
+};
+function memoryVersusMenu(){
+  shell('🧠 神経衰弱・対戦',`<div class="gameTable centeredGame"><div class="memoryRules"><b>対戦ルール：</b>54枚すべてを使い、スートが違っても同じ数字・A/J/Q/Kならペア。JOKERはJOKER同士です。ペアを取ったら続けてめくれます。</div><div class="memoryModeGrid"><button class="btn" onclick="startMemoryHumanVsHuman()">👥 2人で対戦</button><button class="btn pink" onclick="memoryCpuLevelMenu()">🤖 CPUと対戦</button></div><div class="actionBar"><button class="btn alt" onclick="openGame('memory')">← 戻る</button></div></div>`,'2人対戦かCPU対戦を選んでね！')
+}
+function memoryCpuLevelMenu(){
+  let buttons=Object.entries(MEMORY_CPU_LEVELS).map(([lv,c])=>`<button class="btn ${+lv>=4?'pink':''}" onclick="startMemoryCPU(${lv})">${c.name}</button>`).join('');
+  shell('🤖 CPU対戦',`<div class="gameTable centeredGame"><div class="memoryRules"><b>CPUの強さ：</b>強いほど、これまで表になったカードをよく覚え、知っているペアを正確に取りにいきます。カードの中身を透視する処理はしません。</div><div class="cpuLevelGrid">${buttons}</div><div class="actionBar"><button class="btn alt" onclick="memoryVersusMenu()">← 戻る</button></div></div>`,'CPUの記憶力を選ぼう！')
+}
+function startMemoryHumanVsHuman(){memGame={type:'versus',turn:0,scores:[0,0],cpu:false};startMemory54('versus')}
+function startMemoryCPU(level){
+  level=Math.max(1,Math.min(5,+level||3));
+  memGame={type:'versus',turn:0,scores:[0,0],cpu:true,cpuLevel:level,cpuMemory:[],cpuThinking:false};
+  startMemory54('versus')
+}
+const MEMORY_SOLO_LEVELS=[8,12,20,30,40,54];
+function memorySoloMultiplier(miss){return miss<=3?5:miss<=5?4:miss<=7?3:miss<=10?2:miss<=15?1:0}
+function makeMemorySoloDeck(count){
+  count=Math.max(2,Math.min(54,+count||8));if(count%2)count--;
+  let full=makeMemoryDeck54();if(count===54)return shuffle(full.slice());
+  let pairCount=count/2,by={};
+  for(let c of full){let k=memoryCardData(c).key;if(k==='JOKER')continue;(by[k]||(by[k]=[])).push(c)}
+  let keys=shuffle(Object.keys(by)),selected=[],used={};
+  /* まず各数字から1組ずつ選び、序盤で同じ数字ばかり並ばないようにする */
+  for(let k of keys){if(selected.length>=pairCount)break;let cards=shuffle(by[k].slice());selected.push(cards.slice(0,2));used[k]=new Set(selected[selected.length-1])}
+  /* 14組目以降など、13種類を超えた分だけ同じ数字の残り2枚を第2ペアとして使う */
+  if(selected.length<pairCount){
+    let extraKeys=shuffle(Object.keys(by));
+    for(let k of extraKeys){if(selected.length>=pairCount)break;let rest=by[k].filter(c=>!used[k]?.has(c));if(rest.length>=2)selected.push(shuffle(rest.slice()).slice(0,2))}
+  }
+  return shuffle(selected.flat())
+}
+function startMemorySolo(){
+  if(!memGame||memGame.type!=='solo')memGame={type:'solo',level:0,miss:0};
+  let level=Math.max(0,Math.min(MEMORY_SOLO_LEVELS.length-1,+memGame.level||0)),count=MEMORY_SOLO_LEVELS[level],arr=makeMemorySoloDeck(count);
+  memGame=Object.assign(memGame,{type:'solo',level,arr,open:[],done:[],miss:0,ended:false,locked:false,cpu:false});
+  let rule=`<div class="memoryRules"><b>1人プレイルール：</b>LEVEL 1からスタートし、クリアするたびカードが増えます。LEVEL 6はトランプ54枚。<br><strong>ミス0〜3回＝5倍 / 4〜5回＝4倍 / 6〜7回＝3倍 / 8〜10回＝2倍 / 11〜15回＝1倍</strong>。16回目のミスでそのLEVELは失敗です。</div>`;
+  let cls=count>=40?'memoryGrid fullDeck':'memoryGrid adaptiveMemory',style=count>=40?'':` style="--mem-cols:${count<=8?4:6};--mem-height:${count<=12?72:count<=20?58:count<=30?47:38}px"`;
+  shell('🧠 神経衰弱',`<div class="gameTable memoryTable"><div class="gameStatus" id="memStatus"></div>${rule}<div class="${cls}"${style}>${arr.map((x,i)=>`<button class="memoryCard" id="m${i}" onclick="flip(${i})">?</button>`).join('')}</div><div id="memoryNextFallback" class="actionBar hidden"></div></div>`,'カード枚数が少しずつ増える6LEVELに挑戦！');
+  updateMemoryStatus()
+}
+function memoryGoNext(){
+  let m=memGame;
+  if(!m||m.type!=='solo'||m.level>=MEMORY_SOLO_LEVELS.length-1)return false;
+  document.querySelectorAll('.popup.memoryClearPopup').forEach(x=>x.remove());
+  /* 終了済みオブジェクトを再利用せず、次LEVEL専用の新しい状態を作る。 */
+  let nextLevel=Math.min(MEMORY_SOLO_LEVELS.length-1,Number(m.level||0)+1);
+  memGame={type:'solo',level:nextLevel,miss:0,open:[],done:[],ended:false,locked:false,cpu:false};
+  startMemorySolo();
+  return true;
+}
+function memoryNext(){return memoryGoNext()}
+function memoryAdvanceFromPopup(btn){
+  let popup=btn&&btn.closest?btn.closest('.popup'):null;if(popup)popup.remove();
+  return memoryGoNext();
+}
+function memoryForceNext(ev){
+  if(ev){ev.preventDefault();ev.stopPropagation()}
+  return memoryGoNext()
+}
+function memoryRetry(){if(!memGame||memGame.type!=='solo')return;startMemorySolo()}
+function memoryMode(type){
+  if(type==='solo'){memGame={type:'solo',level:0,miss:0};startMemorySolo();return}
+  memoryVersusMenu()
+}
+function startMemoryVersus(){memoryVersusMenu()}
+function memoryCpuCfg(){return MEMORY_CPU_LEVELS[memGame?.cpuLevel||3]||MEMORY_CPU_LEVELS[3]}
+function cpuPruneMemory(){
+  let m=memGame;if(!m?.cpu)return;
+  let seen=new Set(),valid=[];
+  for(let i=m.cpuMemory.length-1;i>=0;i--){let idx=m.cpuMemory[i];if(seen.has(idx)||m.done.includes(idx))continue;seen.add(idx);valid.push(idx)}
+  valid.reverse();let max=memoryCpuCfg().maxMemory;if(valid.length>max)valid=valid.slice(valid.length-max);m.cpuMemory=valid
+}
+function cpuObserve(index){
+  let m=memGame;if(!m?.cpu||m.done.includes(index))return;
+  let cfg=memoryCpuCfg();
+  if(Math.random()>cfg.remember)return;
+  m.cpuMemory=m.cpuMemory.filter(x=>x!==index);m.cpuMemory.push(index);cpuPruneMemory()
+}
+function cpuKnownPairs(){
+  let m=memGame;if(!m?.cpu)return[];cpuPruneMemory();let by={};
+  for(let idx of m.cpuMemory){if(m.done.includes(idx))continue;let key=memoryCardData(m.arr[idx]).key;(by[key]||(by[key]=[])).push(idx)}
+  return Object.values(by).filter(a=>a.length>=2)
+}
+function cpuRandomAvailable(exclude=[]){
+  let m=memGame,ex=new Set(exclude),pool=m.arr.map((_,i)=>i).filter(i=>!m.done.includes(i)&&!m.open.includes(i)&&!ex.has(i));
+  return pool.length?pool[Math.floor(Math.random()*pool.length)]:null
+}
+function cpuMatchingKnown(firstIndex){
+  let m=memGame,key=memoryCardData(m.arr[firstIndex]).key;cpuPruneMemory();let pool=m.cpuMemory.filter(i=>i!==firstIndex&&!m.done.includes(i)&&!m.open.includes(i)&&memoryCardData(m.arr[i]).key===key);return pool.length?pool[Math.floor(Math.random()*pool.length)]:null
+}
+function updateMemoryStatus(){
+  let m=memGame,e=$('#memStatus');if(!e||!m)return;
+  if(m.type==='solo'){
+    let total=m.arr.length,pairs=total/2,mult=memorySoloMultiplier(m.miss);
+    e.textContent=`LEVEL ${m.level+1}/6・${total}枚　ペア ${m.done.length/2}/${pairs}　ミス ${m.miss}/15　${mult}倍`;
+    /* 旧flipが残る環境でも、盤面が全部そろった事実を最優先してクリア処理へ送る */
+    if(!m.ended&&m.done.length>=m.arr.length)Promise.resolve().then(()=>{if(memGame===m&&!m.ended&&m.done.length>=m.arr.length)memoryComplete()});
+    return
+  }
+  let who=m.cpu?(m.turn===0?'あなた':'CPU'):`プレイヤー${m.turn+1}`;
+  let scoreText=m.cpu?`あなた ${m.scores[0]} - ${m.scores[1]} CPU`:`${m.scores[0]} - ${m.scores[1]}`;
+  e.innerHTML=`54枚・${who}の番　${scoreText}${m.cpu&&m.turn===1&&m.cpuThinking?'<span class="cpuThinking">考え中…</span>':''}`
+}
+function resetMemoryCard(i){let x=$('#m'+i);if(x){x.textContent='?';x.classList.remove('open')}}
+function finishMemoryMiss(a,b){
+  let m=memGame;[a,b].forEach(resetMemoryCard);m.open=[];
+  if(m.type==='solo'){
+    m.miss++;m.locked=false;updateMemoryStatus();
+    if(m.miss>15){m.ended=true;pop('LEVEL FAILED',`ミスが16回になりました。<br>LEVEL ${m.level+1}をもう一度挑戦しよう！<br><button class="btn gold" onclick="this.closest('.popup').remove();memoryRetry()">もう一度</button>`,'','normal')}
+    return
+  }
+  m.turn=1-m.turn;m.locked=false;updateMemoryStatus();
+  if(m.cpu&&m.turn===1&&!m.ended)setTimeout(cpuMemoryTurn,260)
+}
+function flip(i,actor='human'){
+  let m=memGame;if(!m||m.ended||m.locked||m.done.includes(i)||m.open.includes(i)||m.open.length>=2)return;
+  if(m.cpu&&m.type==='versus'){if(actor==='human'&&m.turn===1)return;if(actor==='cpu'&&m.turn!==1)return}
+  let e=$('#m'+i);if(!e)return;e.innerHTML=memoryFace(m.arr[i]);e.classList.add('open');m.open.push(i);cpuObserve(i);if(m.open.length<2)return;
+  m.locked=true;let[a,b]=m.open,da=memoryCardData(m.arr[a]),db=memoryCardData(m.arr[b]),hit=da.key===db.key;
+  if(hit){
+    m.done.push(a,b);m.cpuMemory=m.cpuMemory?.filter(x=>x!==a&&x!==b)||[];m.open=[];$('#m'+a)?.classList.add('done');$('#m'+b)?.classList.add('done');
+    if(m.type==='versus')m.scores[m.turn]++;m.locked=false;updateMemoryStatus();
+    if(m.done.length===m.arr.length){memoryComplete();return}
+    if(m.cpu&&m.turn===1)setTimeout(cpuMemoryTurn,350);return
+  }
+  setTimeout(()=>finishMemoryMiss(a,b),650)
+}
+async function cpuMemoryTurn(){
+  let m=memGame;if(!m?.cpu||m.ended||m.turn!==1||m.locked||m.cpuThinking)return;
+  m.cpuThinking=true;updateMemoryStatus();let cfg=memoryCpuCfg();
+  await new Promise(r=>setTimeout(r,cfg.delay));if(m.ended||m.turn!==1){m.cpuThinking=false;updateMemoryStatus();return}
+  let pair=cpuKnownPairs(),first=null;
+  if(pair.length&&Math.random()<cfg.usePair){let p=pair[Math.floor(Math.random()*pair.length)];first=p[0]}else first=cpuRandomAvailable();
+  if(first==null){m.cpuThinking=false;return}m.cpuThinking=false;flip(first,'cpu');
+  await new Promise(r=>setTimeout(r,cfg.delay));if(m.ended||m.turn!==1||m.open.length!==1)return;
+  let second=null,known=cpuMatchingKnown(first);if(known!=null&&Math.random()<cfg.secondMatch)second=known;else second=cpuRandomAvailable([first]);
+  if(second!=null)flip(second,'cpu')
+}
+function memoryComplete(){
+  let m=memGame;if(!m||m.ended)return;m.ended=true;m.locked=true;
+  if(m.type==='solo'){
+    let mult=memorySoloMultiplier(m.miss),reward=(m.level+1)*mult,last=m.level>=MEMORY_SOLO_LEVELS.length-1;
+    let rarity=m.level>=4&&mult>=4?'legendary':m.level>=2||mult>=4?'rare':'normal';
+
+    /* 最優先：保存処理や演出に失敗しても、次LEVELボタンだけは必ず盤面上に出す */
+    let fallback=document.getElementById('memoryNextFallback');
+    if(fallback){
+      fallback.classList.remove('hidden');
+      fallback.innerHTML=last
+        ? '<strong>🎉 LEVEL 6 CLEAR！ 全ステージクリア！</strong>'
+        : `<strong>🎉 LEVEL ${m.level+1} CLEAR！</strong><button class="btn gold bigContinue memoryNextButton" data-memory-next="1" type="button">次のLEVELへ</button>`;
+    }
+
+    let main=document.querySelector('.memoryTable');
+    if(main&&!fallback){
+      let old=main.querySelector('.memoryClearActions');if(old)old.remove();
+      let box=document.createElement('div');box.className='memoryClearActions actionBar';
+      box.innerHTML=last?'<strong>🎉 LEVEL 6 CLEAR！ 全ステージクリア！</strong>':`<strong>🎉 LEVEL ${m.level+1} CLEAR！</strong><button class="btn gold bigContinue memoryNextButton" data-memory-next="1" type="button">次のLEVELへ</button>`;
+      main.appendChild(box);
+    }
+
+    /* 報酬は二重加算を防ぎつつ保存。保存エラーでもゲーム進行は止めない */
+    if(!m.rewardGranted){
+      m.rewardGranted=true;
+      try{state.wallet+=reward;saveState()}catch(err){console.warn('memory reward save failed',err);try{renderWallet()}catch(_){}}
+    }
+
+    /* 結果ポップアップは補助導線。ここが失敗しても盤面上ボタンは残る */
+    try{
+      document.querySelectorAll('.popup.memoryClearPopup').forEach(x=>x.remove());
+      let el=document.createElement('div');el.className='popup memoryClearPopup';
+      el.innerHTML=`<div class="popupBox winPopup ${rarity}"><h2>${last?'ALL CLEAR！':'LEVEL CLEAR！'}</h2><p class="bigReward">LEVEL ${m.level+1}・${m.arr.length}枚<br>ミス ${m.miss}回・${mult}倍<br>🐚${reward}獲得！</p>${last?'<p>LEVEL 6・54枚まで全ステージクリア！</p><button class="btn gold" type="button" onclick="this.closest(\'.popup\').remove()">閉じる</button>':'<button class="btn gold bigContinue memoryNextButton" data-memory-next="1" type="button">次のLEVELへ</button>'}</div>`;
+      document.body.appendChild(el);
+      try{celebrateLevel(rarity)}catch(_){}
+    }catch(err){console.warn('memory clear popup failed',err)}
+    return
+  }
+  let winner=m.scores[0]===m.scores[1]?-1:m.scores[0]>m.scores[1]?0:1;if(winner>=0){state.wallet+=10;saveState()}
+  let title;if(winner<0)title='DRAW';else if(m.cpu)title=winner===0?'YOU WIN！':'CPU WIN！';else title=`プレイヤー${winner+1} WIN！`;
+  let sub=winner<0?'引き分け':`${shellIconHTML()}10獲得！`;pop(title,sub,winner===0||(!m.cpu&&winner>=0)?'win':'')
+}
+
+/* inline onclickや端末差に依存しない、次LEVEL専用の委譲入力。 */
+document.addEventListener('click',function(ev){let b=ev.target&&ev.target.closest?ev.target.closest('[data-memory-next]'):null;if(b)memoryForceNext(ev)},true);
+document.addEventListener('touchend',function(ev){let b=ev.target&&ev.target.closest?ev.target.closest('[data-memory-next]'):null;if(b)memoryForceNext(ev)},{passive:false,capture:true});
+Object.assign(window,{memoryMode,startMemorySolo,startMemoryVersus,memoryGoNext,memoryNext,memoryAdvanceFromPopup,memoryForceNext,memoryRetry,memoryVersusMenu,memoryCpuLevelMenu,startMemoryHumanVsHuman,startMemoryCPU,cpuMemoryTurn,flip,updateMemoryStatus,memoryComplete});
+
+
+/* Public BLACKJACK wording: losing actions are always 続ける / やめる. */
+function bjEnd(result){
+  if(bj.ended)return;bj.ended=true;let win=result==='WIN',tie=result==='DRAW';if(win)bjRun.pot*=2;if(!win&&!tie){bjRun.pot=0;bjRun.active=false}
+  let lossActions='<button class="btn gold" onclick="bjReady()">続ける</button><button class="btn alt" onclick="back()">やめる</button>';
+  let winActions='<button class="btn" onclick="bjDecision(true)">勝ち分で続ける</button><button class="btn gold" onclick="bjDecision(false)">シェルを受け取る</button>';
+  shell('♠️ BLACKJACK',`<div class="gameTable"><p>ファマリン ${val(bj.c)}</p><div class="cards">${bj.c.map(c=>card(c)).join('')}</div><p>あなた ${val(bj.p)}</p><div class="cards playerHand">${bj.p.map(c=>card(c)).join('')}</div><div class="actionBar">${win||tie?winActions:lossActions}</div></div>`,'勝負が決まったよ！');
+  let level=win&&bjRun.pot>=bjRun.lastBet*4?'rare':'normal',el=document.createElement('div');el.className='popup';
+  el.innerHTML=`<div class="popupBox ${win?'winPopup '+level:''}"><h2>${result==='BUST'?'BUST！':win?'YOU WIN！':tie?'DRAW':'DEALER WIN'}</h2><p>あなた ${val(bj.p)} / ファマリン ${val(bj.c)}</p>${win||tie?`<p class="bigReward">現在 ${typeof shellText==='function'?shellText(bjRun.pot):'🐚'+bjRun.pot}</p><button class="btn bigContinue" onclick="bjDecision(true);this.parentElement.parentElement.remove()">勝ち分で続ける</button><button class="btn gold bigContinue" onclick="bjDecision(false);this.parentElement.parentElement.remove()">シェルを受け取る</button>`:'<button class="btn gold bigContinue" onclick="this.parentElement.parentElement.remove();bjReady()">続ける</button><button class="btn alt bigContinue" onclick="this.parentElement.parentElement.remove();back()">やめる</button>'}</div>`;
+  document.body.appendChild(el);if(win&&typeof celebrateLevel==='function')celebrateLevel(level)
+}
+Object.assign(window,{bjEnd});
 </script>
 <script id="admin-script" data-master>
 'use strict';const ADMIN_KEY='mta-admin-v2';let admin=loadAdmin();function copyData(v){return JSON.parse(JSON.stringify(v))}function defaults(){return{password:'3103',autoSave:true,allowPublicImageSave:false,updatedAt:'',background:'',dealerImage:window.__PUBLIC__.dealerImage,characters:copyData(window.__PUBLIC__.characters),games:copyData(window.__PUBLIC__.games),roulette:copyData(window.__PUBLIC__.roulette),imageMax:1024,imageQuality:.82}}function loadAdmin(){try{let a=JSON.parse(localStorage.getItem(ADMIN_KEY));return Object.assign(defaults(),a||{})}catch(e){return defaults()}}function publicData(){return{background:admin.background||'',allowPublicImageSave:!!admin.allowPublicImageSave,dealerImage:admin.dealerImage,characters:admin.characters.map(({name,emoji,image})=>({name,emoji,image})),games:admin.games.map(({id,name,icon,desc})=>({id,name,icon,desc})),roulette:admin.roulette.map(({label,image,color,group})=>({label,image,color,group}))}}function syncConfig(){config=window.__PUBLIC__=publicData();applyVisuals();renderHome()}function adminSave(show=false){admin.updatedAt=new Date().toLocaleString('ja-JP');localStorage.setItem(ADMIN_KEY,JSON.stringify(admin));syncConfig();if(show)alert('保存しました')}function maybeAdminSave(){if(admin.autoSave)adminSave()}function adminLogin(){let pw=prompt('管理パスワード');if(pw===admin.password)openAdmin();else if(pw!==null)alert('パスワードが違います')}function openAdmin(){let o=document.createElement('div');o.id='adminOverlay';o.className='adminOverlay';o.innerHTML=`<div class="adminBox"><div class="adminNav row"><button class="btn alt" onclick="closeAdmin()">← 閉じる</button><b>MARINE TRICK ARCADE 管理</b><button class="btn" onclick="adminSave(true)">💾 手動保存</button><button class="btn gold" onclick="exportPublic()">🌐 index.html書き出し</button><button class="btn pink" onclick="testAdminLogin()">🔑 ログイン確認</button></div><section class="panel"><h3>基本設定</h3><div class="adminGrid"><label>管理パスワード<input value="${esc(admin.password)}" onchange="admin.password=this.value;maybeAdminSave()"></label><label><input type="checkbox" ${admin.autoSave?'checked':''} onchange="admin.autoSave=this.checked;adminSave()"> 自動保存</label><label><input type="checkbox" ${admin.allowPublicImageSave?'checked':''} onchange="admin.allowPublicImageSave=this.checked;maybeAdminSave()"> 公開側の画像保存を許可</label><label>更新日時<input value="${esc(admin.updatedAt||'未保存')}" readonly></label><label>最大辺<select onchange="admin.imageMax=+this.value;maybeAdminSave()">${[512,1024,1600,2048].map(v=>`<option ${admin.imageMax===v?'selected':''}>${v}</option>`).join('')}</select></label><label>画像品質<input type="number" min="0.4" max="1" step="0.05" value="${admin.imageQuality}" onchange="admin.imageQuality=+this.value;maybeAdminSave()"></label></div></section><section class="panel"><h3>背景同期</h3><input type="file" accept="image/*" onchange="setBackground(this.files[0])"> <button class="btn danger" onclick="admin.background='';maybeAdminSave();openAdminRefresh()">解除</button></section><section class="panel"><h3>キャラクター個別登録・画像差し替え</h3>${admin.characters.map((c,i)=>adminChar(c,i)).join('')}</section><section class="panel"><h3>ゲーム表示・並び替え</h3>${admin.games.map((g,i)=>`<div class="adminItem"><b>${g.icon} ${esc(g.name)}</b><div><input value="${esc(g.name)}" onchange="admin.games[${i}].name=this.value;maybeAdminSave()"><input value="${esc(g.desc)}" onchange="admin.games[${i}].desc=this.value;maybeAdminSave()"></div><div><button class="btn alt" onclick="moveGame(${i},-1)">↑</button><button class="btn alt" onclick="moveGame(${i},1)">↓</button></div></div>`).join('')}</section><section class="panel"><h3>ルーレット盤 個別登録</h3><p>ラベル・画像・色・グループを各マスごとに設定できます。</p>${admin.roulette.map((r,i)=>adminRoulette(r,i)).join('')}</section><section class="panel"><h3>JSON 入出力</h3><button class="btn" onclick="exportJSON()">JSON書き出し</button> <input type="file" accept="application/json,.json" onchange="importJSON(this.files[0])"></section></div>`;document.body.appendChild(o)}function adminChar(c,i){return `<div class="adminItem"><div>${c.image?`<img class="thumb" src="${c.image}">`:c.emoji}</div><div><input value="${esc(c.name)}" onchange="admin.characters[${i}].name=this.value;maybeAdminSave()"><input value="${esc(c.emoji)}" maxlength="4" onchange="admin.characters[${i}].emoji=this.value;maybeAdminSave()"></div><div><input type="file" accept="image/*" onchange="setCharImage(${i},this.files[0])"><button class="btn danger" onclick="admin.characters[${i}].image='';maybeAdminSave();openAdminRefresh()">画像解除</button></div></div>`}function adminRoulette(r,i){return `<div class="adminItem"><div>${r.image?`<img class="thumb" src="${r.image}">`:`<b>${esc(r.label)}</b>`}</div><div><label>表示<input value="${esc(r.label)}" onchange="admin.roulette[${i}].label=this.value;maybeAdminSave()"></label><label>色<select onchange="admin.roulette[${i}].color=this.value;maybeAdminSave()"><option ${r.color==='PINK'?'selected':''}>PINK</option><option ${r.color==='AQUA'?'selected':''}>AQUA</option></select></label><label>組<select onchange="admin.roulette[${i}].group=this.value;maybeAdminSave()">${['ZERO','G1','G2','G3'].map(g=>`<option ${r.group===g?'selected':''}>${g}</option>`).join('')}</select></label></div><div><input type="file" accept="image/*" onchange="setRouletteImage(${i},this.files[0])"><button class="btn danger" onclick="admin.roulette[${i}].image='';maybeAdminSave();openAdminRefresh()">画像解除</button></div></div>`}function closeAdmin(){$('#adminOverlay')?.remove()}function openAdminRefresh(){closeAdmin();openAdmin()}function testAdminLogin(){let p=prompt('現在の管理パスワードを入力');alert(p===admin.password?'ログイン動作は正常です':'パスワードが違います')}async function compressImage(file){if(!file)return'';let bmp=await createImageBitmap(file),scale=Math.min(1,admin.imageMax/Math.max(bmp.width,bmp.height)),w=Math.round(bmp.width*scale),h=Math.round(bmp.height*scale),cv=document.createElement('canvas');cv.width=w;cv.height=h;cv.getContext('2d').drawImage(bmp,0,0,w,h);return cv.toDataURL(file.type==='image/png'?'image/png':'image/webp',admin.imageQuality)}async function setCharImage(i,f){admin.characters[i].image=await compressImage(f);maybeAdminSave();openAdminRefresh()}async function setRouletteImage(i,f){admin.roulette[i].image=await compressImage(f);maybeAdminSave();openAdminRefresh()}async function setBackground(f){admin.background=await compressImage(f);maybeAdminSave();openAdminRefresh()}function moveGame(i,d){let j=i+d;if(j<0||j>=admin.games.length)return;[admin.games[i],admin.games[j]]=[admin.games[j],admin.games[i]];maybeAdminSave();openAdminRefresh()}function exportJSON(){adminSave();download('MARINE_TRICK_ARCADE_backup.json',JSON.stringify({version:2,admin,state},null,2),'application/json')}function importJSON(f){if(!f)return;let r=new FileReader();r.onload=()=>{try{let x=JSON.parse(r.result);if(x.admin)admin=Object.assign(defaults(),x.admin);if(x.state)state=x.state;adminSave();openAdminRefresh();alert('JSONを読み込みました')}catch(e){alert('JSONを読み込めませんでした')}};r.readAsText(f)}function download(name,text,type){let b=new Blob([text],{type}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)}function encodeUTF8(s){let bytes=new TextEncoder().encode(s),bin='';for(let i=0;i<bytes.length;i+=8192)bin+=String.fromCharCode(...bytes.subarray(i,i+8192));return btoa(bin)}function minifyHTML(s){return s.replace(/<!--[^]*?-->/g,'').replace(/>\s+</g,'><').trim()}function buildPublicHTML(){let clone=document.documentElement.cloneNode(true);clone.querySelectorAll('[data-master],#admin-script,#master-config,#adminOverlay').forEach(e=>e.remove());let runtime=clone.querySelector('#public-runtime');let code=runtime.textContent;runtime.remove();clone.querySelector('#home').classList.remove('hidden');clone.querySelector('#screen').classList.add('hidden');clone.querySelector('#screen').innerHTML='';let boot=document.createElement('script'),data=JSON.stringify(publicData()).replace(/</g,'\\u003c'),encoded=encodeUTF8(code);boot.textContent=`window.__PUBLIC__=${data};Function(new TextDecoder().decode(Uint8Array.from(atob('${encoded}'),c=>c.charCodeAt(0))))();`;clone.querySelector('body').appendChild(boot);return '<!doctype html>'+minifyHTML(clone.outerHTML)}function exportPublic(){adminSave();let html=buildPublicHTML();download('index.html',html,'text/html');let checks=verifyPublicSource(html);if(checks.ok)alert(`index.htmlを書き出しました\n管理情報除去：OK\n単一HTML：OK\nサイズ：${Math.round(html.length/1024)}KB`);else alert('書き出しましたが検査に失敗：'+checks.errors.join(' / '))}function verifyPublicSource(html){let errors=[];['3103','adminLogin','管理パスワード','JSON書き出し','exportPublic','mta-admin-v2'].forEach(x=>{if(html.includes(x))errors.push(x+' が残っています')});if(!html.includes('window.__PUBLIC__'))errors.push('公開データなし');if(!html.includes('data:image/webp;base64'))errors.push('ディーラー画像なし');return{ok:!errors.length,errors}}admin.roulette.forEach((r,i)=>r.group=i===0?'ZERO':i<=3?'G1':i<=6?'G2':'G3');admin.cards||={backImage:'',frontImage:'',centerNumbers:true};
@@ -675,6 +893,20 @@ async function optimizePublicDataImages(data,settings){
   if(Array.isArray(d.raceComics))for(let i=0;i<d.raceComics.length;i++)d.raceComics[i]=await opt(d.raceComics[i],cfg.comicMax,Math.min(.92,cfg.quality+.04));
   return d;
 }
+function verifyArcadePublicRuntime(){
+  let errors=[],runtime=document.querySelector('#public-runtime')?.textContent||'',source=document.documentElement.outerHTML;
+  const required=[
+    ['神経衰弱の6レベル','const MEMORY_SOLO_LEVELS=[8,12,20,30,40,54]'],
+    ['神経衰弱の次レベル処理','function memoryGoNext()'],
+    ['神経衰弱のタッチ操作',"addEventListener('touchend',function(ev)"],
+    ['神経衰弱CPUレベル5',"5:{name:'LV5 エキスパート'"],
+    ['ブラックジャックの「続ける」','>続ける</button>'],
+    ['ブラックジャックの「やめる」','>やめる</button>']
+  ];
+  for(let [label,marker] of required)if(!runtime.includes(marker))errors.push(label+'なし');
+  if(!source.includes('.memoryGrid.fullDeck')||!source.includes('repeat(6,minmax(0,1fr))'))errors.push('スマホ用54枚グリッドなし');
+  return{ok:!errors.length,errors};
+}
 async function exportPublic(){
   normalizeDealerAdmin(admin);ensureArcadeAssetAdmin(admin);ensureRaceComicAdmin(admin);ensurePublicExportSettings(admin);admin.updatedAt=new Date().toLocaleString('ja-JP');
   let btn=(typeof event!=='undefined'&&event&&event.currentTarget)?event.currentTarget:null,old=btn&&btn.textContent;
@@ -821,10 +1053,10 @@ function blackjack(mode){bjRun={mode,pot:0,base:5,lastBet:5,active:false};bjRead
 function bjReady(){let r=bjRun;shell('♠️ BLACKJACK',`<div class="gameTable centeredGame"><div class="gameStatus">残り ${shellText(state.wallet)}</div>${r.mode==='medal'?`<label>最初にかけるシェル <input id="bjBet" type="number" min="1" max="20" value="${Math.min(20,r.lastBet||5)}"></label>`:'<p>フリープレイ</p>'}<div class="actionBar"><button class="btn gold bigContinue" onclick="bjStart()">ゲーム開始</button><button class="btn alt" onclick="back()">ゲームをやめる</button></div></div>`,'21を目指して勝負しよう！')}
 function bjEnd(result){
   if(bj.ended)return;bj.ended=true;let win=result==='WIN',tie=result==='DRAW';if(win)bjRun.pot*=2;if(!win&&!tie){bjRun.pot=0;bjRun.active=false}
-  let lossActions=`<button class="btn gold" onclick="bjReady()">ゲームを続ける</button><button class="btn alt" onclick="back()">ゲームをやめる</button>`;
+  let lossActions=`<button class="btn gold" onclick="bjReady()">続ける</button><button class="btn alt" onclick="back()">やめる</button>`;
   let winActions=`<button class="btn" onclick="bjDecision(true)">勝ち分で続ける</button><button class="btn gold" onclick="bjDecision(false)">シェルを受け取る</button>`;
   shell('♠️ BLACKJACK',`<div class="gameTable"><p>ファマリン ${val(bj.c)}</p><div class="cards">${bj.c.map(c=>card(c)).join('')}</div><p>あなた ${val(bj.p)}</p><div class="cards playerHand">${bj.p.map(c=>card(c)).join('')}</div><div class="actionBar">${win||tie?winActions:lossActions}</div></div>`,'勝負が決まったよ！');
-  let level=win&&bjRun.pot>=bjRun.lastBet*4?'rare':'normal',el=document.createElement('div');el.className='popup';el.innerHTML=`<div class="popupBox ${win?'winPopup '+level:''}"><h2>${result==='BUST'?'BUST！':win?'YOU WIN！':tie?'DRAW':'DEALER WIN'}</h2><p>あなた ${val(bj.p)} / ファマリン ${val(bj.c)}</p>${win||tie?`<p class="bigReward">現在 ${shellText(bjRun.pot)}</p><button class="btn bigContinue" onclick="bjDecision(true);this.parentElement.parentElement.remove()">勝ち分で続ける</button><button class="btn gold bigContinue" onclick="bjDecision(false);this.parentElement.parentElement.remove()">シェルを受け取る</button>`:`<button class="btn gold bigContinue" onclick="this.parentElement.parentElement.remove();bjReady()">ゲームを続ける</button><button class="btn alt bigContinue" onclick="this.parentElement.parentElement.remove();back()">ゲームをやめる</button>`}</div>`;document.body.appendChild(el);if(win)celebrateLevel(level)
+  let level=win&&bjRun.pot>=bjRun.lastBet*4?'rare':'normal',el=document.createElement('div');el.className='popup';el.innerHTML=`<div class="popupBox ${win?'winPopup '+level:''}"><h2>${result==='BUST'?'BUST！':win?'YOU WIN！':tie?'DRAW':'DEALER WIN'}</h2><p>あなた ${val(bj.p)} / ファマリン ${val(bj.c)}</p>${win||tie?`<p class="bigReward">現在 ${shellText(bjRun.pot)}</p><button class="btn bigContinue" onclick="bjDecision(true);this.parentElement.parentElement.remove()">勝ち分で続ける</button><button class="btn gold bigContinue" onclick="bjDecision(false);this.parentElement.parentElement.remove()">シェルを受け取る</button>`:`<button class="btn gold bigContinue" onclick="this.parentElement.parentElement.remove();bjReady()">続ける</button><button class="btn alt bigContinue" onclick="this.parentElement.parentElement.remove();back()">やめる</button>`}</div>`;document.body.appendChild(el);if(win)celebrateLevel(level)
 }
 async function setShellImage(file){if(!file)return;ensureArcadeV12Assets(admin);admin.shellImage=await compressImage(file);maybeAdminSave();openAdminRefresh()}
 async function setSlotSymbolImage(i,file){if(!file)return;ensureArcadeV12Assets(admin);admin.slotSymbols[i].image=await compressImage(file);maybeAdminSave();openAdminRefresh()}
@@ -1216,6 +1448,8 @@ async function exportPublic(){
   let btn=(typeof event!=='undefined'&&event&&event.currentTarget)?event.currentTarget:null,old=btn&&btn.textContent;
   if(btn){btn.disabled=true;btn.textContent='画像圧縮中…'}
   try{
+    let runtimeCheck=verifyArcadePublicRuntime();
+    if(!runtimeCheck.ok)throw new Error('公開用ゲーム機能の検査に失敗：'+runtimeCheck.errors.join(' / '));
     let raw=syncRoulettePublicImages(publicData()),optimized=await optimizePublicDataImages(raw,admin.publicExport);
     // Final safety pass: never let roulette images disappear during public generation.
     if(Array.isArray(admin.roulette)&&Array.isArray(optimized.roulette))for(let i=0;i<optimized.roulette.length;i++){
@@ -1223,12 +1457,12 @@ async function exportPublic(){
     }
     let html=buildPublicHTMLWithData(optimized),ok=download('index.html',html,'text/html;charset=utf-8');adminSave(false);if(!ok)return;
     let checks=verifyPublicSource(html),mb=(new Blob([html])).size/1024/1024,registered=(admin.roulette||[]).filter(x=>x.image).length,exported=(optimized.roulette||[]).filter(x=>x.image).length;
-    if(checks.ok&&exported>=registered)alert(`index.htmlを書き出しました\n公開画像を軽量化：OK\nルーレット画像：${exported}/${registered} 登録分を反映\n管理情報除去：OK\nサイズ：約${mb.toFixed(1)}MB`);
+    if(checks.ok&&exported>=registered)alert(`index.htmlを書き出しました\n神経衰弱・スマホ/タブレット操作：OK\nブラックジャック文言：OK\n公開画像を軽量化：OK\nルーレット画像：${exported}/${registered} 登録分を反映\n管理情報除去：OK\nサイズ：約${mb.toFixed(1)}MB`);
     else alert(`書き出しましたが検査に注意があります\nルーレット画像：${exported}/${registered}\n${checks.errors.join(' / ')}\nサイズ：約${mb.toFixed(1)}MB`)
   }catch(e){alert('index.htmlの生成に失敗しました\n'+storageErrorText(e))}
   finally{if(btn){btn.disabled=false;btn.textContent=old||'🌐 index.html書き出し'}}
 }
-Object.assign(window,{publicData,optimizePublicDataImages,exportPublic,syncRoulettePublicImages});
+Object.assign(window,{publicData,optimizePublicDataImages,exportPublic,syncRoulettePublicImages,verifyArcadePublicRuntime});
 
 /* ARCADE layout/input final integration */
 (function(){
