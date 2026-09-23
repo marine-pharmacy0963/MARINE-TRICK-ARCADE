@@ -306,6 +306,23 @@ Object.assign(window,{slot,startSlot,finishSlot,publicSlotSymbols,publicSlotSymb
   `;
   document.head.appendChild(st);
 })();
+function makeMemoryDeck54(){
+  let suits=['♠','♥','♦','♣'],arr=[];
+  for(let s of suits)for(let r=1;r<=13;r++)arr.push({rank:r,suit:s,joker:false,key:'R'+r});
+  arr.push({rank:0,suit:'★',joker:true,key:'JOKER',jokerNo:1},{rank:0,suit:'★',joker:true,key:'JOKER',jokerNo:2});
+  return shuffle(arr)
+}
+function memoryCardData(cardObj){
+  ensureCardConfig();let c=cardObj||{};
+  if(c.joker)return{joker:true,rank:'JOKER',suit:'★',image:config.cards.jokerImage||'',fallback:'🃏',key:'JOKER'};
+  let rank=Math.max(1,Math.min(13,+c.rank||1)),suit=c.suit||'♠';return{joker:false,rank:rankText(rank),suit,image:config.cards.rankImages[rank-1]||config.cards.frontImage||'',fallback:rankText(rank),key:'R'+rank}
+}
+function memoryFace(cardObj){let d=memoryCardData(cardObj),red=d.suit==='♥'||d.suit==='♦';return `<span class="memoryFaceCard ${red?'red':''} ${d.joker?'joker':''}"><span class="memorySuitBackdrop">${d.suit}</span><b>${d.rank}<small>${d.suit}</small></b>${d.image?`<img src="${d.image}" alt="${esc(d.rank)}">`:`<i>${d.fallback}</i>`}</span>`}
+function startMemory54(type){
+  let arr=makeMemoryDeck54();memGame=Object.assign(memGame||{},{type,arr,open:[],done:[],miss:0,ended:false,locked:false});if(type==='versus'){memGame.turn=memGame.turn||0;memGame.scores=memGame.scores||[0,0]}
+  let rule=`<div class="memoryRules"><b>ルール：</b>トランプ54枚を全部使用。<br>♠♥♦♣の<strong>スートが違っても、数字・A/J/Q/Kが同じならペア</strong>です。JOKERはJOKER同士でペアになります。</div>`;
+  shell('🧠 神経衰弱',`<div class="gameTable memoryTable"><div class="gameStatus" id="memStatus"></div>${rule}<div class="memoryGrid fullDeck">${arr.map((x,i)=>`<button class="memoryCard" id="m${i}" type="button" data-memory-flip="${i}">?</button>`).join('')}</div></div>`,'同じ数字を見つけたら続けてめくれるよ！');updateMemoryStatus()
+}
 const MEMORY_CPU_LEVELS={
   1:{name:'LV1 やさしい',remember:.28,usePair:.32,secondMatch:.38,maxMemory:6,delay:780},
   2:{name:'LV2 ひかえめ',remember:.45,usePair:.50,secondMatch:.55,maxMemory:10,delay:720},
@@ -318,7 +335,7 @@ function memoryVersusMenu(){
 }
 function memoryCpuLevelMenu(){
   let buttons=Object.entries(MEMORY_CPU_LEVELS).map(([lv,c])=>`<button class="btn ${+lv>=4?'pink':''}" type="button" data-memory-cpu="${lv}">${c.name}</button>`).join('');
-  shell('🤖 CPU対戦',`<div class="gameTable centeredGame"><div class="memoryRules"><b>CPUの強さ：</b>強いほど、これまで表になったカードをよく覚え、知っているペアを正確に取りにいきます。カードの中身を透視する処理はしません。</div><div class="cpuLevelGrid">${buttons}</div><div class="actionBar"><button class="btn alt" type="button" data-memory-action="versus-menu">← 戻る</button></div></div>`,'CPUの記憶力を選ぼう！')
+  shell('🤖 CPU対戦',`<div class="gameTable centeredGame"><div class="memoryRules"><b>CPUの強さ：</b>強いほど、これまで表になったカードをよく覚え、知っているペアを正確に取りにいきます。</div><div class="cpuLevelGrid">${buttons}</div><div class="actionBar"><button class="btn alt" type="button" data-memory-action="versus-menu">← 戻る</button></div></div>`,'CPUの記憶力を選ぼう！')
 }
 function startMemoryHumanVsHuman(){memGame={type:'versus',turn:0,scores:[0,0],cpu:false};startMemory54('versus')}
 function startMemoryCPU(level){
@@ -349,7 +366,7 @@ function startMemorySolo(){
   memGame=Object.assign(memGame,{type:'solo',level,arr,open:[],done:[],miss:0,ended:false,locked:false,cpu:false});
   let rule=`<div class="memoryRules"><b>1人プレイルール：</b>LEVEL 1からスタートし、クリアするたびカードが増えます。LEVEL 6はトランプ54枚。<br><strong>ミス0〜3回＝5倍 / 4〜5回＝4倍 / 6〜7回＝3倍 / 8〜10回＝2倍 / 11〜15回＝1倍</strong>。16回目のミスでそのLEVELは失敗です。</div>`;
   let cls=count>=40?'memoryGrid fullDeck':'memoryGrid adaptiveMemory',style=count>=40?'':` style="--mem-cols:${count<=8?4:6};--mem-height:${count<=12?72:count<=20?58:count<=30?47:38}px"`;
-  shell('🧠 神経衰弱',`<div class="gameTable memoryTable"><div class="gameStatus" id="memStatus"></div>${rule}<div class="${cls}"${style}>${arr.map((x,i)=>`<button class="memoryCard" id="m${i}" onclick="flip(${i})">?</button>`).join('')}</div><div id="memoryNextFallback" class="actionBar hidden"></div></div>`,'カード枚数が少しずつ増える6LEVELに挑戦！');
+  shell('🧠 神経衰弱',`<div class="gameTable memoryTable"><div class="gameStatus" id="memStatus"></div>${rule}<div class="${cls}"${style}>${arr.map((x,i)=>`<button class="memoryCard" id="m${i}" type="button" data-memory-flip="${i}">?</button>`).join('')}</div><div id="memoryNextFallback" class="actionBar hidden"></div></div>`,'カード枚数が少しずつ増える6LEVELに挑戦！');
   updateMemoryStatus()
 }
 function memoryGoNext(){
@@ -496,15 +513,16 @@ function memoryComplete(){
 
 /* 神経衰弱のメニューボタンと次LEVELを、inline onclickに依存せず処理する。 */
 function memoryDelegatedInput(ev){
-  let target=ev.target&&ev.target.closest?ev.target.closest('[data-memory-mode],[data-memory-action],[data-memory-cpu],[data-memory-next]'):null;if(!target)return;
+  let target=ev.target&&ev.target.closest?ev.target.closest('[data-memory-mode],[data-memory-action],[data-memory-cpu],[data-memory-flip],[data-memory-next]'):null;if(!target)return;
   ev.preventDefault();ev.stopPropagation();
-  if(target.hasAttribute('data-memory-next')){window.memoryForceNext(ev);return}
-  let mode=target.getAttribute('data-memory-mode');if(mode)window.memoryMode(mode)
-  let cpu=target.getAttribute('data-memory-cpu');if(cpu){window.startMemoryCPU(+cpu);return}
+  if(target.hasAttribute('data-memory-next')){memoryForceNext(ev);return}
+  let card=target.getAttribute('data-memory-flip');if(card!==null){flip(+card);return}
+  let mode=target.getAttribute('data-memory-mode');if(mode){memoryMode(mode);return}
+  let cpu=target.getAttribute('data-memory-cpu');if(cpu){startMemoryCPU(+cpu);return}
   let action=target.getAttribute('data-memory-action');
-  if(action==='human')window.startMemoryHumanVsHuman();
-  else if(action==='cpu-menu')window.memoryCpuLevelMenu();
-  else if(action==='versus-menu')window.memoryVersusMenu();
+  if(action==='human')startMemoryHumanVsHuman();
+  else if(action==='cpu-menu')memoryCpuLevelMenu();
+  else if(action==='versus-menu')memoryVersusMenu();
   else if(action==='main-menu')window.openGame('memory')
 }
 document.addEventListener('click',memoryDelegatedInput,true);
@@ -1223,7 +1241,7 @@ function memoryVersusMenu(){
 }
 function memoryCpuLevelMenu(){
   let buttons=Object.entries(MEMORY_CPU_LEVELS).map(([lv,c])=>`<button class="btn ${+lv>=4?'pink':''}" type="button" data-memory-cpu="${lv}">${c.name}</button>`).join('');
-  shell('🤖 CPU対戦',`<div class="gameTable centeredGame"><div class="memoryRules"><b>CPUの強さ：</b>強いほど、これまで表になったカードをよく覚え、知っているペアを正確に取りにいきます。カードの中身を透視する処理はしません。</div><div class="cpuLevelGrid">${buttons}</div><div class="actionBar"><button class="btn alt" type="button" data-memory-action="versus-menu">← 戻る</button></div></div>`,'CPUの記憶力を選ぼう！')
+  shell('🤖 CPU対戦',`<div class="gameTable centeredGame"><div class="memoryRules"><b>CPUの強さ：</b>強いほど、これまで表になったカードをよく覚え、知っているペアを正確に取りにいきます。</div><div class="cpuLevelGrid">${buttons}</div><div class="actionBar"><button class="btn alt" type="button" data-memory-action="versus-menu">← 戻る</button></div></div>`,'CPUの記憶力を選ぼう！')
 }
 function startMemoryHumanVsHuman(){memGame={type:'versus',turn:0,scores:[0,0],cpu:false};startMemory54('versus')}
 function startMemoryCPU(level){
